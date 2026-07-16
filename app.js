@@ -4,7 +4,9 @@ const companyInput = document.querySelector('#companyInput')
 const roleInput = document.querySelector('#roleInput')
 const dateInput = document.querySelector('#dateInput')
 const linkInput = document.querySelector('#linkInput')
-const jdInput = document.querySelector('#jdInput') // 📌 JD 입력 추가
+const jdInput = document.querySelector('#jdInput')
+const preferredInput = document.querySelector('#preferredInput') // 📌 우대사항 추가
+const coverLetterInput = document.querySelector('#coverLetterInput')
 
 const docStatusInput = document.querySelector('#docStatusInput')
 const interview1Date = document.querySelector('#interview1Date')
@@ -22,17 +24,17 @@ const countText = document.querySelector('#countText')
 const emptyMessage = document.querySelector('#emptyMessage')
 const jobTableBody = document.querySelector('#jobTableBody')
 
-// 📌 모달 관련 DOM 요소 바인딩
-const jdModal = document.querySelector('#jdModal')
-const jdModalTitle = document.querySelector('#jdModalTitle')
-const jdModalBodyText = document.querySelector('#jdModalBodyText')
-const closeJdModalBtn = document.querySelector('#closeJdModalBtn')
+// 모달 DOM 요소 바인딩
+const textModal = document.querySelector('#textModal')
+const modalTitle = document.querySelector('#modalTitle')
+const modalBodyText = document.querySelector('#modalBodyText')
+const closeModalBtn = document.querySelector('#closeModalBtn')
 
 // 로컬스토리지 보관소 연동
 let jobs = JSON.parse(localStorage.getItem('excelJobs')) || []
 let editingId = null
 
-// 초기화 가동
+// 초기 가동
 renderJobs()
 
 function renderJobs() {
@@ -60,7 +62,7 @@ function getFilteredJobs() {
   })
 }
 
-// 엑셀 표의 행 생성
+// 엑셀 표 행 생성
 function createTableRow(job) {
   const tr = document.createElement('tr')
 
@@ -69,22 +71,28 @@ function createTableRow(job) {
   const int2DateText = job.interview2Date ? job.interview2Date : '-'
   const linkCellContent = job.link ? `<a href="${job.link}" target="_blank" class="link-btn">이동</a>` : '-'
   
-  // 📌 JD 유무에 따른 셀 노출 분기 (JD가 있을 때만 보기 버튼 제공)
-  const jdCellContent = job.jd ? `<button class="jd-view-btn" type="button">JD 보기</button>` : '-'
+  const jdCellContent = job.jd ? `<button class="view-btn" type="button">JD 보기</button>` : '-'
+  // 📌 우대사항 셀 추가
+  const prefCellContent = job.preferred ? `<button class="view-btn pref-btn" type="button">우대 보기</button>` : '-'
+  const clCellContent = job.coverLetter ? `<button class="view-btn cl-btn" type="button">자소서 보기</button>` : '-'
 
+  // 📌 가로축 정렬 순서 변경 (채용 상세 내용 선배치 ➡️ 전형 결과 후배치)
   tr.innerHTML = `
     <td class="td-dday">${dDayText}</td>
     <td style="font-weight: 700;">${job.company}</td>
     <td>${job.role}</td>
     <td>${job.date}</td>
+    <td>${linkCellContent}</td>
+    <td>${jdCellContent}</td>
+    <td>${prefCellContent}</td> <!-- 📌 우대사항 선배치 -->
+    <td>${clCellContent}</td>   <!-- 📌 자소서 선배치 -->
     <td><span class="status-pill ${job.docStatus}">${job.docStatus}</span></td>
     <td>${int1DateText}</td>
     <td><span class="status-pill ${job.interview1Result}">${job.interview1Result}</span></td>
     <td>${int2DateText}</td>
     <td><span class="status-pill ${job.interview2Result}">${job.interview2Result}</span></td>
     <td><span class="status-pill ${job.finalStatus}">${job.finalStatus}</span></td>
-    <td>${linkCellContent}</td>
-    <td>${jdCellContent}</td> <td class="table-actions">
+    <td class="table-actions">
       <button class="edit-btn">수정</button>
       <button class="delete-btn">삭제</button>
     </td>
@@ -95,28 +103,41 @@ function createTableRow(job) {
   tr.querySelector('.delete-btn').addEventListener('click', () => deleteJob(job.id))
   
   if (job.jd) {
-    tr.querySelector('.jd-view-btn').addEventListener('click', () => openJdModal(job.company, job.role, job.jd))
+    tr.querySelectorAll('.view-btn')[0].addEventListener('click', () => openModal(job.company, `${job.role} - 직무기술서(JD)`, job.jd))
+  }
+  
+  if (job.preferred) {
+    // 버튼 인덱스를 고려하여 우대사항 바인딩
+    const prefBtn = tr.querySelector('.pref-btn')
+    if (prefBtn) {
+      prefBtn.addEventListener('click', () => openModal(job.company, `${job.role} - 우대사항`, job.preferred))
+    }
+  }
+  
+  if (job.coverLetter) {
+    const clBtn = tr.querySelector('.cl-btn')
+    if (clBtn) {
+      clBtn.addEventListener('click', () => openModal(job.company, `${job.role} - 자기소개서`, job.coverLetter))
+    }
   }
 
   return tr
 }
 
-// 📌 JD 전용 팝업 모달창 열기
-function openJdModal(company, role, jdText) {
-  jdModalTitle.textContent = `${company} - ${role} 직무기술서`
-  jdModalBodyText.textContent = jdText
-  jdModal.removeAttribute('hidden')
+// 팝업 모달창 제어
+function openModal(company, titleSuffix, text) {
+  modalTitle.textContent = `${company} - ${titleSuffix}`
+  modalBodyText.textContent = text
+  textModal.removeAttribute('hidden')
 }
 
-// 📌 JD 팝업창 닫기
-closeJdModalBtn.addEventListener('click', function () {
-  jdModal.setAttribute('hidden', 'true')
+closeModalBtn.addEventListener('click', function () {
+  textModal.setAttribute('hidden', 'true')
 })
 
-// 외부 검은 투명 레이어 클릭 시에도 모달창 닫히도록 예외 처리
-jdModal.addEventListener('click', function (event) {
-  if (event.target === jdModal) {
-    jdModal.setAttribute('hidden', 'true')
+textModal.addEventListener('click', function (event) {
+  if (event.target === textModal) {
+    textModal.setAttribute('hidden', 'true')
   }
 })
 
@@ -146,7 +167,9 @@ jobForm.addEventListener('submit', function (event) {
   const role = roleInput.value.trim()
   const date = dateInput.value
   const link = linkInput.value.trim()
-  const jd = jdInput.value // 📌 JD 변수 바인딩
+  const jd = jdInput.value
+  const preferred = preferredInput.value // 📌 우대사항 파싱
+  const coverLetter = coverLetterInput.value
   
   const docStatus = docStatusInput.value
   const interview1D = interview1Date.value
@@ -160,7 +183,9 @@ jobForm.addEventListener('submit', function (event) {
     role,
     date,
     link,
-    jd, // 📌 JD 저장소 추가
+    jd,
+    preferred, // 📌 우대사항 추가
+    coverLetter,
     docStatus,
     interview1Date: interview1D,
     interview1Result: interview1R,
@@ -193,7 +218,9 @@ function startEdit(id) {
   roleInput.value = target.role
   dateInput.value = target.date
   linkInput.value = target.link
-  jdInput.value = target.jd || "" // 📌 JD 불러오기 수정
+  jdInput.value = target.jd || ""
+  preferredInput.value = target.preferred || "" // 📌 우대사항 리스토어
+  coverLetterInput.value = target.coverLetter || ""
 
   docStatusInput.value = target.docStatus
   interview1Date.value = target.interview1Date

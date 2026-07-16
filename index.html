@@ -16,6 +16,7 @@
 
   <main class="container">
     
+    <!-- 왼쪽: 지원 기록 등록/수정 폼 -->
     <section class="form-card">
       <h2>📌 지원 기업 등록 / 수정</h2>
       <form id="jobForm" class="job-form">
@@ -40,9 +41,22 @@
           <input type="url" id="linkInput" placeholder="https://careers.company.com" autocomplete="off">
         </div>
 
+        <!-- 직무 기술서 (JD) -->
         <div class="form-row">
           <label for="jdInput">직무 기술서 (JD) 보관함</label>
-          <textarea id="jdInput" rows="5" placeholder="채용 공고가 내려가기 전에 주요 요구역량, 우대사항 등 JD 내용을 복사해서 붙여넣어 두세요."></textarea>
+          <textarea id="jdInput" rows="3" placeholder="주요 역할, 담당 업무 등 JD 핵심 내용을 기록하세요."></textarea>
+        </div>
+
+        <!-- 📌 [신규 추가] 우대사항 보관함 -->
+        <div class="form-row">
+          <label for="preferredInput">우대사항 보관함</label>
+          <textarea id="preferredInput" rows="3" placeholder="어학 점수, 특정 툴 사용 역량, 인턴 경험 등 우대사항을 기재하세요."></textarea>
+        </div>
+
+        <!-- 자기소개서 -->
+        <div class="form-row">
+          <label for="coverLetterInput">자기소개서 (자소서) 작성 / 보관함</label>
+          <textarea id="coverLetterInput" rows="5" placeholder="Q1. 지원 동기 및 포부&#13;질문과 답변 내용을 작성해 두세요."></textarea>
         </div>
 
         <div class="form-row">
@@ -97,6 +111,7 @@
       </form>
     </section>
 
+    <!-- 오른쪽: 프로세스 테이블 -->
     <section class="list-card">
       <div class="list-header">
         <h2>📊 공채 프로세스 현황판</h2>
@@ -118,18 +133,22 @@
         <table class="excel-table">
           <thead>
             <tr>
+              <!-- 📌 가로축 열 배치 전면 개편 (정보 중심 선배치, 결과 항목 후배치) -->
               <th>D-Day</th>
               <th>기업명</th>
               <th>지원 직무</th>
               <th>서류 마감일</th>
+              <th>채용 링크</th>
+              <th>직무기술서(JD)</th>
+              <th>우대사항</th> <!-- 📌 우대사항 열 선배치 -->
+              <th>자기소개서</th> <!-- 📌 자소서 열 선배치 -->
               <th>서류 결과</th>
               <th>1차 면접일</th>
               <th>1차 결과</th>
               <th>2차 면접일</th>
               <th>2차 결과</th>
               <th>최종 결과</th>
-              <th>채용 링크</th>
-              <th>직무기술서(JD)</th> <th class="actions-th">관리</th>
+              <th class="actions-th">관리</th>
             </tr>
           </thead>
           <tbody id="jobTableBody"></tbody>
@@ -141,14 +160,15 @@
       </div>
     </section>
 
-    <div id="jdModal" class="custom-modal" hidden>
-      <div class="modal-content jd-modal-content">
+    <!-- 팝업 모달 창 (JD, 우대사항, 자소서 공용 팝업) -->
+    <div id="textModal" class="custom-modal" hidden>
+      <div class="modal-content text-modal-content">
         <div class="modal-header">
-          <h3 id="jdModalTitle">기업명 - 직무 기술서</h3>
-          <button type="button" id="closeJdModalBtn" class="close-btn">&times;</button>
+          <h3 id="modalTitle">기업명 - 상세 보기</h3>
+          <button type="button" id="closeModalBtn" class="close-btn">&times;</button>
         </div>
         <div class="modal-body">
-          <pre id="jdModalBodyText">저장된 JD 내용이 출력됩니다.</pre>
+          <pre id="modalBodyText">내용이 출력됩니다.</pre>
         </div>
       </div>
     </div>

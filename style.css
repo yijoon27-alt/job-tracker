@@ -31,7 +31,7 @@ body {
 }
 
 .container {
-  width: min(1450px, 98%);
+  width: min(1500px, 98%);
   margin: 24px auto;
   display: grid;
   grid-template-columns: 340px 1fr;
@@ -234,8 +234,8 @@ button {
 .delete-btn { background-color: #fef2f2; color: #ef4444; }
 .delete-btn:hover { background-color: #ef4444; color: white; }
 
-/* 📌 JD 보기 버튼 스타일 */
-.jd-view-btn {
+/* 공용 보기 버튼 */
+.view-btn {
   background-color: #eff6ff;
   color: #2563eb;
   border: 1px solid #bfdbfe;
@@ -243,8 +243,30 @@ button {
   border-radius: 6px;
   font-size: 11px;
 }
-.jd-view-btn:hover {
+.view-btn:hover {
   background-color: #3b82f6;
+  color: white;
+}
+
+/* 📌 우대사항 전용 민트색 버튼 스타일 */
+.pref-btn {
+  background-color: #ecfdf5;
+  color: #059669;
+  border: 1px solid #a7f3d0;
+}
+.pref-btn:hover {
+  background-color: #059669;
+  color: white;
+}
+
+/* 자소서 전용 연보라색 버튼 스타일 */
+.cl-btn {
+  background-color: #faf5ff;
+  color: #7c3aed;
+  border: 1px solid #e9d5ff;
+}
+.cl-btn:hover {
+  background-color: #7c3aed;
   color: white;
 }
 
@@ -262,7 +284,7 @@ button {
   background-color: #fff;
 }
 
-/* 📌 JD 모달 스타일 */
+/* 팝업 모달 스타일 */
 .custom-modal {
   position: fixed;
   top: 0;
@@ -280,11 +302,11 @@ button {
   display: none !important;
 }
 
-.jd-modal-content {
+.text-modal-content {
   background-color: white;
   border-radius: 14px;
-  width: min(650px, 90%);
-  max-height: 80vh;
+  width: min(700px, 90%);
+  max-height: 85vh;
   display: flex;
   flex-direction: column;
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
@@ -318,10 +340,9 @@ button {
 
 .modal-body {
   padding: 20px;
-  overflow-y: auto; /* 내용이 너무 길어지면 내부 스크롤바 생성 */
+  overflow-y: auto;
 }
 
-/* 📌 텍스트 포맷 유지 및 자동 줄바꿈 */
 .modal-body pre {
   margin: 0;
   white-space: pre-wrap;
@@ -336,3 +357,4 @@ button {
   .container { grid-template-columns: 1fr; }
   .list-header { flex-direction: column; align-items: flex-start; }
   .search-area { max-width: 100%; width: 100%; }
+}

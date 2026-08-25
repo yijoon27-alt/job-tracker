@@ -218,6 +218,7 @@ async function loadJobs() {
   const { data, error } = await supabaseClient
     .from('jobs')
     .select(DB_COLUMNS)
+    .order('deadline', { ascending: true })
     .order('created_at', { ascending: true })
 
   if (error) {
@@ -340,10 +341,19 @@ function getFilteredJobs() {
   const keyword = searchInput.value.trim().toLowerCase()
   const selectedStatus = statusFilter.value
 
-  return jobs.filter((job) => {
-    const searchText = `${job.company} ${job.role}`.toLowerCase()
-    return searchText.includes(keyword) && (selectedStatus === '전체' || job.finalStatus === selectedStatus)
-  })
+  return jobs
+    .filter((job) => {
+      const searchText = `${job.company} ${job.role}`.toLowerCase()
+      return searchText.includes(keyword) && (selectedStatus === '전체' || job.finalStatus === selectedStatus)
+    })
+    .sort(compareJobsByDeadline)
+}
+
+function compareJobsByDeadline(firstJob, secondJob) {
+  const deadlineOrder = firstJob.date.localeCompare(secondJob.date)
+  if (deadlineOrder !== 0) return deadlineOrder
+
+  return String(firstJob.createdAt || '').localeCompare(String(secondJob.createdAt || ''))
 }
 
 function createTableRow(job) {

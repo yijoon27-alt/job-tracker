@@ -2,6 +2,10 @@
   box-sizing: border-box;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "맑은 고딕", sans-serif;
@@ -11,10 +15,15 @@ body {
 
 .page-header {
   padding: 30px 20px;
-  text-align: center;
   color: white;
   background-color: #0f172a;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  position: relative;
+  text-align: center;
 }
 
 .page-header h1 {
@@ -28,6 +37,141 @@ body {
   color: #94a3b8;
   font-size: 13px;
   font-weight: 400;
+}
+
+.account-bar {
+  position: absolute;
+  right: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #cbd5e1;
+  font-size: 12px;
+}
+
+.header-button {
+  padding: 7px 10px;
+  color: #e2e8f0;
+  background-color: #1e293b;
+  border: 1px solid #475569;
+}
+
+.header-button:hover {
+  background-color: #334155;
+}
+
+.center-card,
+.auth-card {
+  width: min(460px, calc(100% - 32px));
+  margin: 48px auto;
+  padding: 28px;
+  background-color: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+}
+
+.center-card h2,
+.auth-card h2,
+.migration-panel h2 {
+  margin: 0 0 10px;
+  color: #0f172a;
+  font-size: 19px;
+}
+
+.center-card p,
+.auth-card > p,
+.migration-panel p {
+  margin: 0;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.center-card code {
+  padding: 2px 5px;
+  border-radius: 4px;
+  background-color: #f1f5f9;
+}
+
+.danger-text,
+.error {
+  color: #dc2626 !important;
+}
+
+#migrationButton {
+  color: white;
+  background-color: #2563eb;
+}
+
+.google-login-button {
+  width: 100%;
+  margin-top: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: #1f2937;
+  background-color: white;
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+
+.google-login-button:hover {
+  background-color: #f8fafc;
+  border-color: #94a3b8;
+}
+
+.google-letter {
+  color: #2563eb;
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.message {
+  min-height: 20px;
+  margin-top: 14px !important;
+}
+
+.migration-panel {
+  width: min(1500px, 98%);
+  margin: 24px auto -8px;
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  background-color: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 12px;
+}
+
+.migration-panel[hidden] {
+  display: none;
+}
+
+.migration-panel h2 {
+  font-size: 15px;
+}
+
+#migrationButton {
+  flex: none;
+}
+
+.app-message {
+  width: min(1500px, 98%);
+  margin: 18px auto -10px;
+  padding: 10px 14px;
+  color: #1d4ed8;
+  background-color: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.app-message.error {
+  background-color: #fef2f2;
+  border-color: #fecaca;
 }
 
 .container {
@@ -85,6 +229,12 @@ textarea,
 button {
   font: inherit;
   font-size: 13px;
+}
+
+button:disabled,
+input:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
 }
 
 input,
@@ -213,9 +363,15 @@ button {
   font-weight: bold;
 }
 
-.status-pill.대기 { color: #475569; background-color: #f1f5f9; }
-.status-pill.합격 { color: #16a34a; background-color: #dcfce7; }
-.status-pill.탈락 { color: #dc2626; background-color: #fee2e2; }
+.status-pill.status-waiting { color: #475569; background-color: #f1f5f9; }
+.status-pill.status-success { color: #16a34a; background-color: #dcfce7; }
+.status-pill.status-failure { color: #dc2626; background-color: #fee2e2; }
+.status-pill.status-progress { color: #2563eb; background-color: #dbeafe; }
+.status-pill.status-na { color: #64748b; background-color: #f8fafc; }
+
+.company-cell {
+  font-weight: 700;
+}
 
 .table-actions {
   display: flex;
@@ -354,6 +510,26 @@ button {
 }
 
 @media (max-width: 950px) {
+  .page-header {
+    padding-bottom: 74px;
+  }
+  .account-bar {
+    right: 50%;
+    bottom: 18px;
+    transform: translateX(50%);
+    width: max-content;
+    max-width: calc(100% - 24px);
+  }
+  .account-bar span {
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .migration-panel {
+    align-items: stretch;
+    flex-direction: column;
+  }
   .container { grid-template-columns: 1fr; }
   .list-header { flex-direction: column; align-items: flex-start; }
   .search-area { max-width: 100%; width: 100%; }

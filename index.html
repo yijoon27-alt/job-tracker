@@ -3,176 +3,188 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self'; connect-src 'self' https://*.supabase.co; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests">
   <title>취업 공채 대시보드</title>
   <link rel="stylesheet" href="style.css">
-  <script src="app.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.min.js" integrity="sha384-yiVMs0R/Jyz7OhoXa/DsEMUSBLjEhr/QJta2ONO+zB6I8/GmNg/7AUFrZmAJV7KV" crossorigin="anonymous"></script>
+  <script type="module" src="app.js"></script>
 </head>
 <body>
-
   <header class="page-header">
-    <h1>💼 My Job Roadmap Tracker</h1>
-    <p>취업 성공을 응원합니다.</p>
+    <div>
+      <h1>💼 My Job Roadmap Tracker</h1>
+      <p>취업 성공을 응원합니다.</p>
+    </div>
+    <div id="accountBar" class="account-bar" hidden>
+      <span id="accountEmail"></span>
+      <button type="button" id="exportButton" class="header-button">내 데이터 백업</button>
+      <button type="button" id="logoutButton" class="header-button">로그아웃</button>
+    </div>
   </header>
 
-  <main class="container">
-    
-    <!-- 왼쪽: 지원 기록 등록/수정 폼 -->
-    <section class="form-card">
-      <h2>📌 지원 기업 등록 / 수정</h2>
-      <form id="jobForm" class="job-form">
-        
-        <div class="form-row">
-          <label for="companyInput">기업명</label>
-          <input type="text" id="companyInput" placeholder="예: LG전자" required autocomplete="off">
-        </div>
+  <main>
+    <section id="loadingPanel" class="center-card" aria-live="polite">
+      <h2>대시보드 연결 중</h2>
+      <p>안전한 로그인 상태를 확인하고 있습니다.</p>
+    </section>
 
-        <div class="form-row">
-          <label for="roleInput">지원 직무</label>
-          <input type="text" id="roleInput" placeholder="예: 디지털 마케팅" required autocomplete="off">
-        </div>
+    <section id="setupPanel" class="center-card" hidden>
+      <h2>Supabase 연결 설정이 필요합니다</h2>
+      <p><code>config.js</code>에 프로젝트 URL과 <strong>Publishable key</strong>를 입력해 주세요.</p>
+      <p class="danger-text">Secret key 또는 service_role 키는 절대로 입력하지 마세요.</p>
+    </section>
 
-        <div class="form-row">
-          <label for="dateInput">서류 제출 마감일</label>
-          <input type="date" id="dateInput" required>
-        </div>
+    <section id="authPanel" class="auth-card" hidden>
+      <h2>내 대시보드 로그인</h2>
+      <p>같은 Google 계정으로 로그인하면 다른 컴퓨터에서도 내 지원 기록을 볼 수 있습니다.</p>
+      <button type="button" id="googleLoginButton" class="google-login-button">
+        <span class="google-letter" aria-hidden="true">G</span>
+        Google 계정으로 계속
+      </button>
+      <p id="authMessage" class="message" aria-live="polite"></p>
+    </section>
 
-        <div class="form-row">
-          <label for="linkInput">채용 사이트 링크</label>
-          <input type="url" id="linkInput" placeholder="https://careers.company.com" autocomplete="off">
-        </div>
+    <section id="migrationPanel" class="migration-panel" hidden>
+      <div>
+        <h2>이 브라우저에서 기존 기록을 발견했습니다</h2>
+        <p><strong id="legacyCount">0개</strong> 기록을 사전에 허용한 본인 Google 계정으로 가져올 수 있습니다. 성공 전에는 기존 데이터를 삭제하지 않습니다.</p>
+      </div>
+      <button type="button" id="migrationButton">기존 기록 가져오기</button>
+    </section>
 
-        <!-- 직무 기술서 (JD) -->
-        <div class="form-row">
-          <label for="jdInput">직무 기술서 (JD) 보관함</label>
-          <textarea id="jdInput" rows="3" placeholder="주요 역할, 담당 업무 등 JD 핵심 내용을 기록하세요."></textarea>
-        </div>
+    <p id="appMessage" class="app-message" aria-live="polite" hidden></p>
 
-        <!-- 📌 [신규 추가] 우대사항 보관함 -->
-        <div class="form-row">
-          <label for="preferredInput">우대사항 보관함</label>
-          <textarea id="preferredInput" rows="3" placeholder="어학 점수, 특정 툴 사용 역량, 인턴 경험 등 우대사항을 기재하세요."></textarea>
-        </div>
-
-        <!-- 자기소개서 -->
-        <div class="form-row">
-          <label for="coverLetterInput">자기소개서 (자소서) 작성 / 보관함</label>
-          <textarea id="coverLetterInput" rows="5" placeholder="Q1. 지원 동기 및 포부&#13;질문과 답변 내용을 작성해 두세요."></textarea>
-        </div>
-
-        <div class="form-row">
-          <label for="docStatusInput">서류 합격 여부</label>
-          <select id="docStatusInput">
-            <option value="대기">⏳ 대기중</option>
-            <option value="합격">🟢 합격</option>
-            <option value="탈락">🔴 탈락</option>
-          </select>
-        </div>
-
-        <div class="form-row">
-          <label for="interview1Input">1차 면접일 및 결과</label>
-          <div class="split-row">
-            <input type="date" id="interview1Date">
-            <select id="interview1Result">
-              <option value="미대상">미대상</option>
-              <option value="대기">⏳ 면접대기</option>
+    <div id="dashboard" class="container" hidden>
+      <section class="form-card">
+        <h2>📌 지원 기업 등록 / 수정</h2>
+        <form id="jobForm" class="job-form">
+          <div class="form-row">
+            <label for="companyInput">기업명</label>
+            <input type="text" id="companyInput" maxlength="200" placeholder="예: LG전자" required autocomplete="off">
+          </div>
+          <div class="form-row">
+            <label for="roleInput">지원 직무</label>
+            <input type="text" id="roleInput" maxlength="200" placeholder="예: 디지털 마케팅" required autocomplete="off">
+          </div>
+          <div class="form-row">
+            <label for="dateInput">서류 제출 마감일</label>
+            <input type="date" id="dateInput" required>
+          </div>
+          <div class="form-row">
+            <label for="linkInput">채용 사이트 링크</label>
+            <input type="url" id="linkInput" maxlength="2048" placeholder="https://careers.company.com" autocomplete="off">
+          </div>
+          <div class="form-row">
+            <label for="jdInput">직무 기술서 (JD) 보관함</label>
+            <textarea id="jdInput" rows="3" maxlength="50000" placeholder="주요 역할, 담당 업무 등 JD 핵심 내용을 기록하세요."></textarea>
+          </div>
+          <div class="form-row">
+            <label for="preferredInput">우대사항 보관함</label>
+            <textarea id="preferredInput" rows="3" maxlength="50000" placeholder="어학 점수, 특정 툴 사용 역량, 인턴 경험 등 우대사항을 기재하세요."></textarea>
+          </div>
+          <div class="form-row">
+            <label for="coverLetterInput">자기소개서 (자소서) 작성 / 보관함</label>
+            <textarea id="coverLetterInput" rows="5" maxlength="200000" placeholder="Q1. 지원 동기 및 포부&#13;질문과 답변 내용을 작성해 두세요."></textarea>
+          </div>
+          <div class="form-row">
+            <label for="docStatusInput">서류 합격 여부</label>
+            <select id="docStatusInput">
+              <option value="대기">⏳ 대기중</option>
               <option value="합격">🟢 합격</option>
               <option value="탈락">🔴 탈락</option>
             </select>
           </div>
-        </div>
+          <div class="form-row">
+            <label for="interview1Date">1차 면접일 및 결과</label>
+            <div class="split-row">
+              <input type="date" id="interview1Date">
+              <select id="interview1Result">
+                <option value="미대상">미대상</option>
+                <option value="대기">⏳ 면접대기</option>
+                <option value="합격">🟢 합격</option>
+                <option value="탈락">🔴 탈락</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <label for="interview2Date">2차(최종) 면접일 및 결과</label>
+            <div class="split-row">
+              <input type="date" id="interview2Date">
+              <select id="interview2Result">
+                <option value="미대상">미대상</option>
+                <option value="대기">⏳ 면접대기</option>
+                <option value="합격">🟢 합격</option>
+                <option value="탈락">🔴 탈락</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <label for="finalStatusInput">최종 합격 프로세스</label>
+            <select id="finalStatusInput">
+              <option value="진행중">🏃 진행 중</option>
+              <option value="최종합격">✨ 최종 합격!</option>
+              <option value="최종탈락">💔 다음 기회에</option>
+            </select>
+          </div>
+          <div class="button-area">
+            <button type="submit" id="submitButton">등록하기</button>
+            <button type="button" id="cancelEditButton" hidden>취소</button>
+          </div>
+        </form>
+      </section>
 
-        <div class="form-row">
-          <label for="interview2Input">2차(최종) 면접일 및 결과</label>
-          <div class="split-row">
-            <input type="date" id="interview2Date">
-            <select id="interview2Result">
-              <option value="미대상">미대상</option>
-              <option value="대기">⏳ 면접대기</option>
-              <option value="합격">🟢 합격</option>
-              <option value="탈락">🔴 탈락</option>
+      <section class="list-card">
+        <div class="list-header">
+          <h2>📊 공채 프로세스 현황판</h2>
+          <div class="search-area">
+            <input type="text" id="searchInput" placeholder="기업명 또는 직무 실시간 검색" autocomplete="off">
+            <select id="statusFilter">
+              <option value="전체">전체 현황</option>
+              <option value="진행중">🏃 진행 중</option>
+              <option value="최종합격">✨ 최종 합격</option>
+              <option value="최종탈락">💔 탈락 건</option>
             </select>
           </div>
         </div>
-
-        <div class="form-row">
-          <label for="finalStatusInput">최종 합격 프로세스</label>
-          <select id="finalStatusInput">
-            <option value="진행중">🏃 진행 중</option>
-            <option value="최종합격">✨ 최종 합격!</option>
-            <option value="최종탈락">💔 다음 기회에</option>
-          </select>
+        <p id="countText">총 0개 기업 프로세스 추적 중</p>
+        <div class="table-wrapper">
+          <table class="excel-table">
+            <thead>
+              <tr>
+                <th>D-Day</th>
+                <th>기업명</th>
+                <th>지원 직무</th>
+                <th>서류 마감일</th>
+                <th>채용 링크</th>
+                <th>직무기술서(JD)</th>
+                <th>우대사항</th>
+                <th>자기소개서</th>
+                <th>서류 결과</th>
+                <th>1차 면접일</th>
+                <th>1차 결과</th>
+                <th>2차 면접일</th>
+                <th>2차 결과</th>
+                <th>최종 결과</th>
+                <th class="actions-th">관리</th>
+              </tr>
+            </thead>
+            <tbody id="jobTableBody"></tbody>
+          </table>
+          <div id="emptyMessage" class="empty-message" hidden>등록된 지원 내역이 없습니다.</div>
         </div>
-
-        <div class="button-area">
-          <button type="submit" id="submitButton">등록하기</button>
-          <button type="button" id="cancelEditButton" hidden>취소</button>
-        </div>
-
-      </form>
-    </section>
-
-    <!-- 오른쪽: 프로세스 테이블 -->
-    <section class="list-card">
-      <div class="list-header">
-        <h2>📊 공채 프로세스 현황판</h2>
-        
-        <div class="search-area">
-          <input type="text" id="searchInput" placeholder="기업명 또는 직무 실시간 검색" autocomplete="off">
-          <select id="statusFilter">
-            <option value="전체">전체 현황</option>
-            <option value="진행중">🏃 진행 중</option>
-            <option value="최종합격">✨ 최종 합격</option>
-            <option value="최종탈락">💔 탈락 건</option>
-          </select>
-        </div>
-      </div>
-
-      <p id="countText">총 0개 기업 지원 관리 중</p>
-
-      <div class="table-wrapper">
-        <table class="excel-table">
-          <thead>
-            <tr>
-              <!-- 📌 가로축 열 배치 전면 개편 (정보 중심 선배치, 결과 항목 후배치) -->
-              <th>D-Day</th>
-              <th>기업명</th>
-              <th>지원 직무</th>
-              <th>서류 마감일</th>
-              <th>채용 링크</th>
-              <th>직무기술서(JD)</th>
-              <th>우대사항</th> <!-- 📌 우대사항 열 선배치 -->
-              <th>자기소개서</th> <!-- 📌 자소서 열 선배치 -->
-              <th>서류 결과</th>
-              <th>1차 면접일</th>
-              <th>1차 결과</th>
-              <th>2차 면접일</th>
-              <th>2차 결과</th>
-              <th>최종 결과</th>
-              <th class="actions-th">관리</th>
-            </tr>
-          </thead>
-          <tbody id="jobTableBody"></tbody>
-        </table>
-        
-        <div id="emptyMessage" class="empty-message" hidden>
-          등록된 지원 내역이 없습니다.
-        </div>
-      </div>
-    </section>
-
-    <!-- 팝업 모달 창 (JD, 우대사항, 자소서 공용 팝업) -->
-    <div id="textModal" class="custom-modal" hidden>
-      <div class="modal-content text-modal-content">
-        <div class="modal-header">
-          <h3 id="modalTitle">기업명 - 상세 보기</h3>
-          <button type="button" id="closeModalBtn" class="close-btn">&times;</button>
-        </div>
-        <div class="modal-body">
-          <pre id="modalBodyText">내용이 출력됩니다.</pre>
-        </div>
-      </div>
+      </section>
     </div>
 
+    <div id="textModal" class="custom-modal" hidden>
+      <div class="modal-content text-modal-content" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+        <div class="modal-header">
+          <h3 id="modalTitle">기업명 - 상세 보기</h3>
+          <button type="button" id="closeModalBtn" class="close-btn" aria-label="닫기">&times;</button>
+        </div>
+        <div class="modal-body"><pre id="modalBodyText">내용이 출력됩니다.</pre></div>
+      </div>
+    </div>
   </main>
 </body>
 </html>

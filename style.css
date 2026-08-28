@@ -134,7 +134,7 @@ body {
 }
 
 .migration-panel {
-  width: min(1500px, 98%);
+  width: min(1700px, 98%);
   margin: 24px auto -8px;
   padding: 16px 20px;
   display: flex;
@@ -159,7 +159,7 @@ body {
 }
 
 .app-message {
-  width: min(1500px, 98%);
+  width: min(1700px, 98%);
   margin: 18px auto -10px;
   padding: 10px 14px;
   color: #1d4ed8;
@@ -177,13 +177,9 @@ body {
 .container {
   width: min(1700px, 98%);
   margin: 24px auto;
-  display: grid;
-  grid-template-columns: 340px 1fr;
-  gap: 20px;
-  align-items: start;
+  display: block;
 }
 
-.form-card,
 .list-card {
   padding: 24px;
   background-color: white;
@@ -196,7 +192,6 @@ body {
   min-width: 0;
 }
 
-.form-card h2,
 .list-card h2 {
   margin: 0 0 16px;
   font-size: 17px;
@@ -204,7 +199,89 @@ body {
   color: #0f172a;
 }
 
+body.drawer-open {
+  overflow: hidden;
+}
+
+.form-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  background-color: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(2px);
+}
+
+.form-drawer {
+  width: min(480px, 100%);
+  height: 100dvh;
+  padding: 0;
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 9001;
+  overflow-y: auto;
+  background-color: white;
+  border-left: 1px solid #e2e8f0;
+  border-radius: 16px 0 0 16px;
+  box-shadow: -18px 0 45px rgba(15, 23, 42, 0.18);
+}
+
+.form-drawer-header {
+  padding: 20px 24px;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background-color: rgba(255, 255, 255, 0.96);
+  border-bottom: 1px solid #e2e8f0;
+  backdrop-filter: blur(8px);
+}
+
+.form-drawer-header > div {
+  min-width: 0;
+}
+
+.form-drawer-header span {
+  display: block;
+  margin-bottom: 4px;
+  color: #3b82f6;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.form-drawer-header h2 {
+  margin: 0;
+  overflow: hidden;
+  color: #0f172a;
+  font-size: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drawer-close-button {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  flex: none;
+  color: #64748b;
+  background-color: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 50%;
+  font-size: 23px;
+  line-height: 1;
+}
+
+.drawer-close-button:hover {
+  color: #0f172a;
+  background-color: #e2e8f0;
+}
+
 .job-form {
+  padding: 22px 24px 32px;
   display: grid;
   gap: 14px;
 }
@@ -352,7 +429,7 @@ button {
   display: flex;
   gap: 6px;
   flex: 1;
-  max-width: 620px;
+  max-width: 900px;
 }
 
 .search-area input {
@@ -363,6 +440,17 @@ button {
 .search-area select {
   width: auto;
   min-width: 108px;
+}
+
+.primary-action {
+  flex: none;
+  color: white;
+  background-color: #2563eb;
+  white-space: nowrap;
+}
+
+.primary-action:hover {
+  background-color: #1d4ed8;
 }
 
 .summary-grid {
@@ -411,11 +499,12 @@ button {
 .summary-passed strong { color: #1d4ed8; }
 .summary-interview strong { color: #7c3aed; }
 
-.deadline-column { width: 12%; }
-.job-column { width: 25%; }
-.material-column { width: 22%; }
-.process-column { width: 33%; }
-.action-column { width: 8%; }
+.deadline-column { width: 10%; }
+.job-column { width: 22%; }
+.prepared-column { width: 13%; }
+.material-column { width: 18%; }
+.process-column { width: 30%; }
+.action-column { width: 7%; }
 
 .table-wrapper {
   width: 100%;
@@ -426,7 +515,7 @@ button {
 
 .excel-table {
   width: 100%;
-  min-width: 760px;
+  min-width: 980px;
   table-layout: fixed;
   border-collapse: collapse;
   text-align: left;
@@ -455,12 +544,41 @@ button {
   background-color: #f8fafc;
 }
 
-.excel-table tbody tr.is-prepared td:first-child {
-  box-shadow: inset 4px 0 #22c55e;
+.excel-table tbody tr.deadline-open td:first-child {
+  box-shadow: inset 4px 0 #cbd5e1;
 }
 
-.excel-table tbody tr.is-not-prepared td:first-child {
+.excel-table tbody tr.deadline-soon td:first-child {
   box-shadow: inset 4px 0 #f59e0b;
+}
+
+.excel-table tbody tr.deadline-urgent td:first-child,
+.excel-table tbody tr.is-rejected td:first-child {
+  box-shadow: inset 4px 0 #ef4444;
+}
+
+.excel-table tbody tr.deadline-closed:not(.is-rejected) td:first-child {
+  box-shadow: inset 4px 0 #94a3b8;
+}
+
+.excel-table tbody tr.deadline-closed:not(.is-rejected) {
+  background-color: #fafafa;
+}
+
+.excel-table tbody tr.is-rejected {
+  background-color: #fffafa;
+}
+
+.excel-table tbody tr.is-rejected:hover {
+  background-color: #fef2f2;
+}
+
+.excel-table tbody tr.is-rejected .company-name,
+.excel-table tbody tr.is-rejected .job-role {
+  color: #7f1d1d;
+  text-decoration-line: line-through;
+  text-decoration-color: #ef4444;
+  text-decoration-thickness: 2px;
 }
 
 .deadline-cell {
@@ -479,8 +597,26 @@ button {
 }
 
 .td-dday {
+  width: fit-content;
+  padding: 3px 6px;
   font-weight: bold;
-  color: #ef4444;
+  border-radius: 5px;
+}
+
+.deadline-open .td-dday {
+  color: #475569;
+  background-color: #f1f5f9;
+}
+
+.deadline-soon .td-dday {
+  color: #b45309;
+  background-color: #fffbeb;
+}
+
+.deadline-urgent .td-dday,
+.deadline-closed .td-dday {
+  color: #dc2626;
+  background-color: #fef2f2;
 }
 
 .status-pill {
@@ -517,7 +653,7 @@ button {
 
 .prepared-toggle {
   width: fit-content;
-  margin-top: 10px;
+  margin: 0;
   padding: 5px 8px;
   display: inline-flex;
   align-items: center;
@@ -536,6 +672,10 @@ button {
   color: #15803d;
   background-color: #f0fdf4;
   border-color: #bbf7d0;
+}
+
+.prepared-cell {
+  vertical-align: middle !important;
 }
 
 .materials-cell {
@@ -561,46 +701,80 @@ button {
   border: 1px dashed #cbd5e1;
 }
 
-.process-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
+.current-stage-label {
+  display: block;
+  margin-bottom: 8px;
+  color: #334155;
+  font-size: 12px;
+  line-height: 1.4;
 }
 
-.process-stage {
-  min-width: 0;
-  padding: 7px 8px;
+.current-stage-label.is-failure { color: #dc2626; }
+.current-stage-label.is-success { color: #15803d; }
+.current-stage-label.is-progress { color: #1d4ed8; }
+.current-stage-label.is-waiting { color: #b45309; }
+.current-stage-label.is-draft { color: #64748b; }
+
+.stage-timeline {
   display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.timeline-step {
+  min-height: 24px;
+  padding: 4px 6px;
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 5px;
-  background-color: #f8fafc;
-  border: 1px solid #eef2f7;
-  border-radius: 7px;
-}
-
-.process-heading {
-  min-width: 0;
-  display: grid;
-  gap: 2px;
-}
-
-.process-label {
+  gap: 4px;
   color: #475569;
-  font-size: 10px;
-  font-weight: 700;
-}
-
-.process-heading time {
-  color: #64748b;
-  font-size: 9px;
-}
-
-.process-stage .status-pill {
-  flex: none;
-  padding: 3px 6px;
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
   font-size: 9px;
   white-space: nowrap;
+}
+
+.timeline-step b {
+  color: inherit;
+  font-size: 9px;
+}
+
+.timeline-step time {
+  padding-left: 4px;
+  color: #64748b;
+  border-left: 1px solid currentColor;
+  font-size: 8px;
+}
+
+.timeline-step.status-success {
+  color: #15803d;
+  background-color: #f0fdf4;
+  border-color: #bbf7d0;
+}
+
+.timeline-step.status-failure {
+  color: #dc2626;
+  background-color: #fef2f2;
+  border-color: #fecaca;
+}
+
+.timeline-step.status-waiting {
+  color: #92400e;
+  background-color: #fffbeb;
+  border-color: #fde68a;
+}
+
+.timeline-step.status-progress {
+  color: #1d4ed8;
+  background-color: #eff6ff;
+  border-color: #bfdbfe;
+}
+
+.timeline-step.status-na {
+  color: #94a3b8;
+  background-color: #f8fafc;
+  border-color: #e2e8f0;
 }
 
 .table-actions {
@@ -767,9 +941,14 @@ button {
 }
 
 @media (max-width: 720px) {
-  .form-card,
   .list-card {
     padding: 18px;
+  }
+
+  .form-drawer {
+    width: 100%;
+    border-left: 0;
+    border-radius: 0;
   }
 
   .search-area {
@@ -783,6 +962,11 @@ button {
 
   .search-area select {
     flex: 1;
+  }
+
+  .search-area .primary-action {
+    width: 100%;
+    flex-basis: 100%;
   }
 
   .summary-grid {
@@ -826,13 +1010,21 @@ button {
     box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04);
   }
 
-  .excel-table tbody tr.is-prepared,
-  .excel-table tbody tr.is-not-prepared {
-    border-left: 4px solid #22c55e;
+  .excel-table tbody tr.deadline-open {
+    border-left: 4px solid #cbd5e1;
   }
 
-  .excel-table tbody tr.is-not-prepared {
-    border-left-color: #f59e0b;
+  .excel-table tbody tr.deadline-soon {
+    border-left: 4px solid #f59e0b;
+  }
+
+  .excel-table tbody tr.deadline-urgent,
+  .excel-table tbody tr.is-rejected {
+    border-left: 4px solid #ef4444;
+  }
+
+  .excel-table tbody tr.deadline-closed:not(.is-rejected) {
+    border-left: 4px solid #94a3b8;
   }
 
   .excel-table th,
@@ -863,10 +1055,6 @@ button {
 
   .deadline-cell time {
     margin: 0 0 0 8px;
-  }
-
-  .process-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .table-actions {

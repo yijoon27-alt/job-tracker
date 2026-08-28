@@ -6,9 +6,9 @@
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self'; connect-src 'self' https://*.supabase.co; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests">
   <title>취업 공채 대시보드</title>
-  <link rel="stylesheet" href="style.css?v=20260828-dashboard-summary">
+  <link rel="stylesheet" href="style.css?v=20260828-drawer-workflow">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.min.js" integrity="sha384-yiVMs0R/Jyz7OhoXa/DsEMUSBLjEhr/QJta2ONO+zB6I8/GmNg/7AUFrZmAJV7KV" crossorigin="anonymous"></script>
-  <script type="module" src="app.js?v=20260828-dashboard-summary"></script>
+  <script type="module" src="app.js?v=20260828-drawer-workflow"></script>
 </head>
 <body>
   <header class="page-header">
@@ -56,8 +56,15 @@
     <p id="appMessage" class="app-message" aria-live="polite" hidden></p>
 
     <div id="dashboard" class="container" hidden>
-      <section class="form-card">
-        <h2>📌 지원 기업 등록 / 수정</h2>
+      <div id="formBackdrop" class="form-backdrop" hidden></div>
+      <section id="jobFormPanel" class="form-card form-drawer" role="dialog" aria-modal="true" aria-labelledby="formTitle" hidden>
+        <div class="form-drawer-header">
+          <div>
+            <span>공고 관리</span>
+            <h2 id="formTitle">지원 기업 등록</h2>
+          </div>
+          <button type="button" id="closeFormButton" class="drawer-close-button" aria-label="등록 및 수정 패널 닫기">&times;</button>
+        </div>
         <form id="jobForm" class="job-form">
           <div class="form-row">
             <label for="companyInput">기업명</label>
@@ -138,7 +145,7 @@
           </div>
           <div class="button-area">
             <button type="submit" id="submitButton">등록하기</button>
-            <button type="button" id="cancelEditButton" hidden>취소</button>
+            <button type="button" id="cancelEditButton" hidden>수정 취소</button>
           </div>
         </form>
       </section>
@@ -159,6 +166,7 @@
               <option value="최종합격">✨ 최종 합격</option>
               <option value="최종탈락">💔 탈락 건</option>
             </select>
+            <button type="button" id="openFormButton" class="primary-action" aria-controls="jobFormPanel" aria-expanded="false">+ 공고 등록</button>
           </div>
         </div>
         <p id="countText">총 0개 공고 관리 중</p>
@@ -194,6 +202,7 @@
             <colgroup>
               <col class="deadline-column">
               <col class="job-column">
+              <col class="prepared-column">
               <col class="material-column">
               <col class="process-column">
               <col class="action-column">
@@ -202,8 +211,9 @@
               <tr>
                 <th>마감</th>
                 <th>기업 / 지원 직무</th>
+                <th>서류 작성</th>
                 <th>지원 자료</th>
-                <th>전형 현황</th>
+                <th>현재 전형</th>
                 <th class="actions-th">관리</th>
               </tr>
             </thead>

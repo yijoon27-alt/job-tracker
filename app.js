@@ -25,6 +25,11 @@ const legacyCount = document.querySelector('#legacyCount')
 const migrationButton = document.querySelector('#migrationButton')
 const appMessage = document.querySelector('#appMessage')
 
+const jobFormPanel = document.querySelector('#jobFormPanel')
+const formBackdrop = document.querySelector('#formBackdrop')
+const formTitle = document.querySelector('#formTitle')
+const openFormButton = document.querySelector('#openFormButton')
+const closeFormButton = document.querySelector('#closeFormButton')
 const jobForm = document.querySelector('#jobForm')
 const companyInput = document.querySelector('#companyInput')
 const roleInput = document.querySelector('#roleInput')
@@ -68,6 +73,7 @@ let currentUser = null
 let jobs = []
 let editingId = null
 let authViewVersion = 0
+let formReturnFocus = null
 
 initialize()
 
@@ -154,7 +160,8 @@ async function applySession(session) {
   if (!session?.user) {
     currentUser = null
     jobs = []
-    editingId = null
+    resetForm()
+    closeJobForm({ restoreFocus: false })
     renderJobs()
     showAuthPanel()
     return
@@ -331,12 +338,14 @@ jobForm.addEventListener('submit', async (event) => {
 
   renderJobs()
   resetForm()
+  closeJobForm()
   showAppMessage('안전하게 저장했습니다.')
 })
 
 function setJobFormBusy(isBusy) {
   submitButton.disabled = isBusy
   cancelEditButton.disabled = isBusy
+  closeFormButton.disabled = isBusy
 }
 
 function renderJobs() {
@@ -389,7 +398,10 @@ function getFilteredJobs() {
   return jobs
     .filter((job) => {
       const searchText = `${job.company} ${job.role}`.toLowerCase()
-      const matchesStatus = selectedStatus === '전체' || job.finalStatus === selectedStatus
+      const matchesStatus = selectedStatus === '전체'
+        || (selectedStatus === '진행중' && !isJobRejected(job) && job.finalStatus !== '최종합격')
+        || (selectedStatus === '최종합격' && job.finalStatus === '최종합격')
+        || (selectedStatus === '최종탈락' && isJobRejected(job))
       const matchesPrepared = selectedPrepared === '전체'
         || (selectedPrepared === '작성완료' && job.documentPrepared)
         || (selectedPrepared === '미작성' && !job.documentPrepared)
@@ -399,7 +411,17 @@ function getFilteredJobs() {
 }
 
 function compareJobsByDeadline(firstJob, secondJob) {
-  const deadlineOrder = firstJob.date.localeCompare(secondJob.date)
+  const firstFinished = isJobRejected(firstJob) || firstJob.finalStatus === '최종합격'
+  const secondFinished = isJobRejected(secondJob) || secondJob.finalStatus === '최종합격'
+  if (firstFinished !== secondFinished) return firstFinished ? 1 : -1
+
+  const firstClosed = daysUntilDeadline(firstJob.date) < 0
+  const secondClosed = daysUntilDeadline(secondJob.date) < 0
+  if (firstClosed !== secondClosed) return firstClosed ? 1 : -1
+
+  const deadlineOrder = firstClosed
+    ? secondJob.date.localeCompare(firstJob.date)
+    : firstJob.date.localeCompare(secondJob.date)
   if (deadlineOrder !== 0) return deadlineOrder
 
   return String(firstJob.createdAt || '').localeCompare(String(secondJob.createdAt || ''))
@@ -407,10 +429,12 @@ function compareJobsByDeadline(firstJob, secondJob) {
 
 function createTableRow(job) {
   const row = document.createElement('tr')
-  row.className = job.documentPrepared ? 'is-prepared' : 'is-not-prepared'
+  row.classList.add(deadlineClassName(job.date))
+  if (isJobRejected(job)) row.classList.add('is-rejected')
   row.append(
     createDeadlineCell(job),
     createJobCell(job),
+    createPreparedCell(job),
     createMaterialsCell(job),
     createProcessCell(job)
   )
@@ -455,6 +479,15 @@ function createJobCell(job) {
   role.className = 'job-role'
   role.textContent = job.role
 
+  cell.append(company, role)
+  return cell
+}
+
+function createPreparedCell(job) {
+  const cell = document.createElement('td')
+  cell.className = 'prepared-cell'
+  cell.dataset.label = '서류 작성'
+
   const preparedLabel = document.createElement('label')
   preparedLabel.className = `prepared-toggle${job.documentPrepared ? ' is-complete' : ''}`
 
@@ -467,9 +500,9 @@ function createJobCell(job) {
   })
 
   const preparedText = document.createElement('span')
-  preparedText.textContent = job.documentPrepared ? '서류 작성 완료' : '서류 미작성'
+  preparedText.textContent = job.documentPrepared ? '작성 완료' : '미작성'
   preparedLabel.append(preparedCheckbox, preparedText)
-  cell.append(company, role, preparedLabel)
+  cell.appendChild(preparedLabel)
   return cell
 }
 
@@ -553,54 +586,113 @@ function createEmptyMaterial(label) {
 function createProcessCell(job) {
   const cell = document.createElement('td')
   cell.className = 'process-cell'
-  cell.dataset.label = '전형 현황'
+  cell.dataset.label = '현재 전형'
 
-  const grid = document.createElement('div')
-  grid.className = 'process-grid'
-  appendProcessStage(grid, '서류', job.docStatus)
-  appendProcessStage(grid, '1차', job.interview1Result, job.interview1Date)
-  appendProcessStage(grid, '2차', job.interview2Result, job.interview2Date)
-  appendProcessStage(grid, '최종', job.finalStatus)
-  cell.appendChild(grid)
+  const current = getCurrentStage(job)
+  const currentLabel = document.createElement('strong')
+  currentLabel.className = `current-stage-label ${current.className}`
+  currentLabel.textContent = current.label
+
+  const timeline = document.createElement('div')
+  timeline.className = 'stage-timeline'
+  for (const stage of getDisplayStages(job)) {
+    timeline.appendChild(createTimelineStep(stage))
+  }
+
+  cell.append(currentLabel, timeline)
   return cell
 }
 
-function appendProcessStage(grid, label, status, dateValue = '') {
-  const stage = document.createElement('div')
-  stage.className = 'process-stage'
-
-  const heading = document.createElement('div')
-  heading.className = 'process-heading'
-  const stageLabel = document.createElement('span')
-  stageLabel.className = 'process-label'
-  stageLabel.textContent = label
-  heading.appendChild(stageLabel)
-
-  if (dateValue) {
-    const date = document.createElement('time')
-    date.dateTime = dateValue
-    date.textContent = dateValue.replaceAll('-', '.')
-    date.title = dateValue
-    heading.appendChild(date)
+function getCurrentStage(job) {
+  if (job.docStatus === '탈락') return { label: '서류 탈락 · 전형 종료', className: 'is-failure' }
+  if (job.interview1Result === '탈락') return { label: '1차 면접 탈락 · 전형 종료', className: 'is-failure' }
+  if (job.interview2Result === '탈락') return { label: '2차 면접 탈락 · 전형 종료', className: 'is-failure' }
+  if (job.finalStatus === '최종탈락') return { label: '최종 전형 탈락', className: 'is-failure' }
+  if (job.finalStatus === '최종합격') return { label: '최종 합격', className: 'is-success' }
+  if (job.interview2Result === '대기') {
+    return { label: stageWithDate('2차 면접 진행', job.interview2Date), className: 'is-progress' }
   }
-
-  stage.append(heading, createStatusPill(status))
-  grid.appendChild(stage)
+  if (job.interview2Result === '합격') return { label: '최종 결과 대기', className: 'is-waiting' }
+  if (job.interview1Result === '대기') {
+    return { label: stageWithDate('1차 면접 진행', job.interview1Date), className: 'is-progress' }
+  }
+  if (job.interview1Result === '합격') return { label: '2차 면접 준비', className: 'is-progress' }
+  if (job.docStatus === '합격') return { label: '1차 면접 준비', className: 'is-progress' }
+  if (job.documentPrepared) return { label: '서류 결과 대기', className: 'is-waiting' }
+  return { label: '지원서 작성 전', className: 'is-draft' }
 }
 
-function createStatusPill(status) {
-  const pill = document.createElement('span')
-  pill.className = `status-pill ${statusClassName(status)}`
-  pill.textContent = status
-  return pill
+function stageWithDate(label, dateValue) {
+  return dateValue ? `${label} · ${dateValue.replaceAll('-', '.')}` : label
+}
+
+function getDisplayStages(job) {
+  const firstFailureIndex = [
+    job.docStatus,
+    job.interview1Result,
+    job.interview2Result,
+    job.finalStatus
+  ].findIndex((status) => status === '탈락' || status === '최종탈락')
+
+  const stages = [
+    { label: '서류', status: job.docStatus },
+    { label: '1차', status: normalizeInterviewStatus(job.interview1Result), date: job.interview1Date },
+    { label: '2차', status: normalizeInterviewStatus(job.interview2Result), date: job.interview2Date },
+    { label: '최종', status: normalizeFinalStatus(job) }
+  ]
+
+  return stages.map((stage, index) => {
+    if (firstFailureIndex >= 0 && index > firstFailureIndex) {
+      return { ...stage, status: '—', date: '' }
+    }
+    return stage
+  })
+}
+
+function normalizeInterviewStatus(status) {
+  return status === '미대상' ? '—' : status
+}
+
+function normalizeFinalStatus(job) {
+  if (job.finalStatus === '최종합격') return '합격'
+  if (job.finalStatus === '최종탈락') return '탈락'
+  return job.interview2Result === '합격' ? '대기' : '—'
+}
+
+function createTimelineStep(stage) {
+  const step = document.createElement('span')
+  step.className = `timeline-step ${statusClassName(stage.status)}`
+
+  const label = document.createElement('b')
+  label.textContent = stage.label
+  const status = document.createElement('span')
+  status.textContent = stage.status
+  step.append(label, status)
+
+  if (stage.date && stage.status !== '—') {
+    const date = document.createElement('time')
+    date.dateTime = stage.date
+    date.textContent = stage.date.slice(5).replace('-', '.')
+    date.title = stage.date
+    step.appendChild(date)
+  }
+
+  return step
 }
 
 function statusClassName(status) {
   if (status === '합격' || status === '최종합격') return 'status-success'
   if (status === '탈락' || status === '최종탈락') return 'status-failure'
   if (status === '진행중') return 'status-progress'
-  if (status === '미대상') return 'status-na'
+  if (status === '미대상' || status === '—') return 'status-na'
   return 'status-waiting'
+}
+
+function isJobRejected(job) {
+  return job.docStatus === '탈락'
+    || job.interview1Result === '탈락'
+    || job.interview2Result === '탈락'
+    || job.finalStatus === '최종탈락'
 }
 
 function createButton(label, className, onClick) {
@@ -623,16 +715,29 @@ function safeHttpUrl(value) {
 }
 
 function calculateDDay(dateString) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateString || '')) return '-'
+  const diffDays = daysUntilDeadline(dateString)
+  if (diffDays === null) return '-'
+  if (diffDays === 0) return 'D-Day'
+  if (diffDays > 0) return `D-${diffDays}`
+  return '마감'
+}
+
+function daysUntilDeadline(dateString) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateString || '')) return null
   const [year, month, day] = dateString.split('-').map(Number)
   const targetDate = new Date(year, month - 1, day)
   const today = new Date()
   today.setHours(0, 0, 0, 0)
 
-  const diffDays = Math.round((targetDate - today) / 86400000)
-  if (diffDays === 0) return 'D-Day'
-  if (diffDays > 0) return `D-${diffDays}`
-  return '마감'
+  return Math.round((targetDate - today) / 86400000)
+}
+
+function deadlineClassName(dateString) {
+  const diffDays = daysUntilDeadline(dateString)
+  if (diffDays === null || diffDays < 0) return 'deadline-closed'
+  if (diffDays <= 3) return 'deadline-urgent'
+  if (diffDays <= 7) return 'deadline-soon'
+  return 'deadline-open'
 }
 
 function startEdit(id) {
@@ -655,8 +760,10 @@ function startEdit(id) {
   interview2Result.value = target.interview2Result
   finalStatusInput.value = target.finalStatus
 
+  formTitle.textContent = `${target.company} 수정`
   submitButton.textContent = '기록 수정완료'
   cancelEditButton.hidden = false
+  openJobForm()
   companyInput.focus()
 }
 
@@ -676,7 +783,10 @@ async function deleteJob(id) {
   }
 
   jobs = jobs.filter((job) => job.id !== id)
-  if (editingId === id) resetForm()
+  if (editingId === id) {
+    resetForm()
+    closeJobForm()
+  }
   renderJobs()
   showAppMessage('삭제했습니다.')
 }
@@ -687,6 +797,43 @@ function resetForm() {
   linkInput.setCustomValidity('')
   submitButton.textContent = '등록하기'
   cancelEditButton.hidden = true
+}
+
+function openJobForm() {
+  formReturnFocus = document.activeElement
+  jobFormPanel.hidden = false
+  formBackdrop.hidden = false
+  openFormButton.setAttribute('aria-expanded', 'true')
+  document.body.classList.add('drawer-open')
+}
+
+function openNewJobForm() {
+  resetForm()
+  formTitle.textContent = '지원 기업 등록'
+  openJobForm()
+  companyInput.focus()
+}
+
+function closeJobForm({ restoreFocus = true } = {}) {
+  if (jobFormPanel.hidden && formBackdrop.hidden) return
+  jobFormPanel.hidden = true
+  formBackdrop.hidden = true
+  openFormButton.setAttribute('aria-expanded', 'false')
+  document.body.classList.remove('drawer-open')
+
+  if (restoreFocus) {
+    const focusTarget = formReturnFocus instanceof HTMLElement && formReturnFocus.isConnected
+      ? formReturnFocus
+      : openFormButton
+    focusTarget.focus()
+  }
+  formReturnFocus = null
+}
+
+function cancelJobForm() {
+  if (submitButton.disabled) return
+  resetForm()
+  closeJobForm()
 }
 
 function openModal(company, titleSuffix, text) {
@@ -705,13 +852,18 @@ textModal.addEventListener('click', (event) => {
   if (event.target === textModal) closeModal()
 })
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape' && !textModal.hidden) closeModal()
+  if (event.key !== 'Escape') return
+  if (!textModal.hidden) closeModal()
+  else if (!jobFormPanel.hidden) cancelJobForm()
 })
 
 searchInput.addEventListener('input', renderJobs)
 preparedFilter.addEventListener('change', renderJobs)
 statusFilter.addEventListener('change', renderJobs)
-cancelEditButton.addEventListener('click', resetForm)
+openFormButton.addEventListener('click', openNewJobForm)
+closeFormButton.addEventListener('click', cancelJobForm)
+formBackdrop.addEventListener('click', cancelJobForm)
+cancelEditButton.addEventListener('click', cancelJobForm)
 linkInput.addEventListener('input', () => linkInput.setCustomValidity(''))
 
 function readLegacyJobs() {

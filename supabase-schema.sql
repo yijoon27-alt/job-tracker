@@ -1,4 +1,4 @@
--- Supabase Dashboard > SQL Editor에서 한 번 실행하세요.
+-- Supabase Dashboard > SQL Editor에서 최초 설치와 업데이트 시 실행하세요.
 -- 테이블이나 사용자 데이터를 삭제하지 않고 필요한 구조와 정책을 생성합니다.
 
 create schema if not exists private;
@@ -22,6 +22,7 @@ create table if not exists public.jobs (
   jd text not null default '' check (char_length(jd) <= 50000),
   preferred text not null default '' check (char_length(preferred) <= 50000),
   cover_letter text not null default '' check (char_length(cover_letter) <= 200000),
+  document_prepared boolean not null default false,
   doc_status text not null default '대기' check (doc_status in ('대기', '합격', '탈락')),
   interview1_date date,
   interview1_result text not null default '미대상' check (interview1_result in ('미대상', '대기', '합격', '탈락')),
@@ -33,6 +34,31 @@ create table if not exists public.jobs (
   updated_at timestamptz not null default now(),
   unique (user_id, legacy_id)
 );
+
+-- 기존 설치에는 서류 작성 여부 필드를 안전하게 추가합니다.
+-- 이미 자소서나 전형 결과가 있는 기록은 작성 완료로 한 번만 보정합니다.
+do $$
+begin
+  if not exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'jobs'
+      and column_name = 'document_prepared'
+  ) then
+    alter table public.jobs
+      add column document_prepared boolean not null default false;
+
+    update public.jobs
+    set document_prepared = true
+    where cover_letter <> ''
+      or doc_status <> '대기'
+      or interview1_result <> '미대상'
+      or interview2_result <> '미대상'
+      or final_status <> '진행중';
+  end if;
+end;
+$$;
 
 create index if not exists jobs_user_id_idx on public.jobs (user_id);
 
@@ -60,12 +86,12 @@ revoke all on table public.jobs from authenticated;
 grant select, delete on table public.jobs to authenticated;
 grant insert (
   user_id, company, role, deadline, link, jd, preferred, cover_letter,
-  doc_status, interview1_date, interview1_result, interview2_date,
+  document_prepared, doc_status, interview1_date, interview1_result, interview2_date,
   interview2_result, final_status
 ) on table public.jobs to authenticated;
 grant update (
   company, role, deadline, link, jd, preferred, cover_letter,
-  doc_status, interview1_date, interview1_result, interview2_date,
+  document_prepared, doc_status, interview1_date, interview1_result, interview2_date,
   interview2_result, final_status
 ) on table public.jobs to authenticated;
 
@@ -160,6 +186,7 @@ begin
     jd,
     preferred,
     cover_letter,
+    document_prepared,
     doc_status,
     interview1_date,
     interview1_result,
@@ -180,6 +207,7 @@ begin
     left(coalesce(legacy.item ->> 'jd', ''), 50000),
     left(coalesce(legacy.item ->> 'preferred', ''), 50000),
     left(coalesce(legacy.item ->> 'cover_letter', ''), 200000),
+    case when legacy.item ->> 'document_prepared' = 'true' then true else false end,
     case when legacy.item ->> 'doc_status' in ('대기', '합격', '탈락')
       then legacy.item ->> 'doc_status' else '대기' end,
     case when coalesce(legacy.item ->> 'interview1_date', '') ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'

@@ -175,7 +175,7 @@ body {
 }
 
 .container {
-  width: min(1500px, 98%);
+  width: min(1700px, 98%);
   margin: 24px auto;
   display: grid;
   grid-template-columns: 340px 1fr;
@@ -190,6 +190,10 @@ body {
   border: 1px solid #e2e8f0;
   border-radius: 14px;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.01);
+}
+
+.list-card {
+  min-width: 0;
 }
 
 .form-card h2,
@@ -260,6 +264,43 @@ textarea:focus {
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
 }
 
+.form-row .check-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  color: #334155;
+  background-color: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.check-option input,
+.prepared-toggle input {
+  width: 17px;
+  height: 17px;
+  margin: 0;
+  padding: 0;
+  flex: none;
+  accent-color: #16a34a;
+}
+
+.check-option span {
+  display: grid;
+  gap: 2px;
+}
+
+.check-option strong {
+  font-size: 12px;
+}
+
+.check-option small {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 500;
+}
+
 .button-area {
   display: flex;
   gap: 6px;
@@ -311,8 +352,70 @@ button {
   display: flex;
   gap: 6px;
   flex: 1;
-  max-width: 400px;
+  max-width: 620px;
 }
+
+.search-area input {
+  min-width: 170px;
+  flex: 1;
+}
+
+.search-area select {
+  width: auto;
+  min-width: 108px;
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(118px, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.summary-card {
+  min-width: 0;
+  padding: 14px;
+  display: grid;
+  gap: 5px;
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-top: 3px solid #94a3b8;
+  border-radius: 10px;
+}
+
+.summary-card .summary-label {
+  color: #475569;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.summary-card strong {
+  color: #0f172a;
+  font-size: 21px;
+  line-height: 1.15;
+}
+
+.summary-card small {
+  color: #64748b;
+  font-size: 10px;
+}
+
+.summary-total { border-top-color: #64748b; }
+.summary-prepared { border-top-color: #16a34a; }
+.summary-waiting { border-top-color: #f59e0b; }
+.summary-passed { border-top-color: #3b82f6; }
+.summary-interview { border-top-color: #8b5cf6; }
+
+.summary-prepared strong { color: #15803d; }
+.summary-waiting strong { color: #b45309; }
+.summary-passed strong { color: #1d4ed8; }
+.summary-interview strong { color: #7c3aed; }
+
+.deadline-column { width: 12%; }
+.job-column { width: 25%; }
+.material-column { width: 22%; }
+.process-column { width: 33%; }
+.action-column { width: 8%; }
 
 .table-wrapper {
   width: 100%;
@@ -323,16 +426,18 @@ button {
 
 .excel-table {
   width: 100%;
+  min-width: 760px;
+  table-layout: fixed;
   border-collapse: collapse;
   text-align: left;
   font-size: 13px;
-  white-space: nowrap;
 }
 
 .excel-table th,
 .excel-table td {
-  padding: 10px 14px;
+  padding: 12px;
   border: 1px solid #e2e8f0;
+  vertical-align: top;
 }
 
 .excel-table th {
@@ -348,6 +453,29 @@ button {
 
 .excel-table tbody tr:hover {
   background-color: #f8fafc;
+}
+
+.excel-table tbody tr.is-prepared td:first-child {
+  box-shadow: inset 4px 0 #22c55e;
+}
+
+.excel-table tbody tr.is-not-prepared td:first-child {
+  box-shadow: inset 4px 0 #f59e0b;
+}
+
+.deadline-cell {
+  white-space: nowrap;
+}
+
+.deadline-cell strong,
+.deadline-cell time {
+  display: block;
+}
+
+.deadline-cell time {
+  margin-top: 5px;
+  color: #64748b;
+  font-size: 10px;
 }
 
 .td-dday {
@@ -369,18 +497,121 @@ button {
 .status-pill.status-progress { color: #2563eb; background-color: #dbeafe; }
 .status-pill.status-na { color: #64748b; background-color: #f8fafc; }
 
-.company-cell {
+.job-cell .company-name,
+.job-cell .job-role {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.job-cell .company-name {
+  color: #0f172a;
+  font-size: 14px;
+}
+
+.job-cell .job-role {
+  margin-top: 4px;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.prepared-toggle {
+  width: fit-content;
+  margin-top: 10px;
+  padding: 5px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #b45309;
+  background-color: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.prepared-toggle.is-complete {
+  color: #15803d;
+  background-color: #f0fdf4;
+  border-color: #bbf7d0;
+}
+
+.materials-cell {
+  line-height: 1;
+}
+
+.material-btn {
+  min-width: 48px;
+  margin: 2px 4px 2px 0;
+  padding: 5px 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  font-size: 10px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.material-empty {
+  color: #94a3b8;
+  background-color: #f8fafc;
+  border: 1px dashed #cbd5e1;
+}
+
+.process-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.process-stage {
+  min-width: 0;
+  padding: 7px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 5px;
+  background-color: #f8fafc;
+  border: 1px solid #eef2f7;
+  border-radius: 7px;
+}
+
+.process-heading {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.process-label {
+  color: #475569;
+  font-size: 10px;
   font-weight: 700;
 }
 
+.process-heading time {
+  color: #64748b;
+  font-size: 9px;
+}
+
+.process-stage .status-pill {
+  flex: none;
+  padding: 3px 6px;
+  font-size: 9px;
+  white-space: nowrap;
+}
+
 .table-actions {
-  display: flex;
-  gap: 4px;
+  text-align: center;
 }
 
 .table-actions button {
-  padding: 4px 8px;
-  font-size: 11px;
+  width: 100%;
+  margin: 0 0 5px;
+  padding: 5px 4px;
+  font-size: 10px;
   border-radius: 6px;
 }
 
@@ -390,21 +621,16 @@ button {
 .delete-btn { background-color: #fef2f2; color: #ef4444; }
 .delete-btn:hover { background-color: #ef4444; color: white; }
 
-/* 공용 보기 버튼 */
 .view-btn {
   background-color: #eff6ff;
   color: #2563eb;
   border: 1px solid #bfdbfe;
-  padding: 4px 8px;
-  border-radius: 6px;
-  font-size: 11px;
 }
 .view-btn:hover {
   background-color: #3b82f6;
   color: white;
 }
 
-/* 📌 우대사항 전용 민트색 버튼 스타일 */
 .pref-btn {
   background-color: #ecfdf5;
   color: #059669;
@@ -415,7 +641,6 @@ button {
   color: white;
 }
 
-/* 자소서 전용 연보라색 버튼 스타일 */
 .cl-btn {
   background-color: #faf5ff;
   color: #7c3aed;
@@ -428,10 +653,16 @@ button {
 
 .link-btn {
   color: #3b82f6;
+  background-color: #eff6ff;
+  border: 1px solid #bfdbfe;
   text-decoration: none;
   font-weight: bold;
 }
-.link-btn:hover { text-decoration: underline; }
+.link-btn:hover {
+  color: white;
+  background-color: #3b82f6;
+  text-decoration: none;
+}
 
 .empty-message {
   padding: 40px;
@@ -533,4 +764,122 @@ button {
   .container { grid-template-columns: 1fr; }
   .list-header { flex-direction: column; align-items: flex-start; }
   .search-area { max-width: 100%; width: 100%; }
+}
+
+@media (max-width: 720px) {
+  .form-card,
+  .list-card {
+    padding: 18px;
+  }
+
+  .search-area {
+    flex-wrap: wrap;
+  }
+
+  .search-area input {
+    width: 100%;
+    flex-basis: 100%;
+  }
+
+  .search-area select {
+    flex: 1;
+  }
+
+  .summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .summary-card:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .table-wrapper {
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .excel-table,
+  .excel-table tbody,
+  .excel-table tr,
+  .excel-table td {
+    width: 100%;
+    min-width: 0;
+    display: block;
+  }
+
+  .excel-table colgroup,
+  .excel-table thead {
+    display: none;
+  }
+
+  .excel-table tbody {
+    display: grid;
+    gap: 12px;
+  }
+
+  .excel-table tbody tr {
+    overflow: hidden;
+    background-color: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04);
+  }
+
+  .excel-table tbody tr.is-prepared,
+  .excel-table tbody tr.is-not-prepared {
+    border-left: 4px solid #22c55e;
+  }
+
+  .excel-table tbody tr.is-not-prepared {
+    border-left-color: #f59e0b;
+  }
+
+  .excel-table th,
+  .excel-table td {
+    padding: 12px;
+    border: 0;
+    border-bottom: 1px solid #eef2f7;
+  }
+
+  .excel-table tbody tr td:first-child {
+    box-shadow: none;
+  }
+
+  .excel-table td::before {
+    content: attr(data-label);
+    margin-bottom: 8px;
+    display: block;
+    color: #94a3b8;
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+  }
+
+  .deadline-cell strong,
+  .deadline-cell time {
+    display: inline;
+  }
+
+  .deadline-cell time {
+    margin: 0 0 0 8px;
+  }
+
+  .process-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .table-actions {
+    display: flex !important;
+    gap: 6px;
+    border-bottom: 0 !important;
+  }
+
+  .table-actions::before {
+    display: none !important;
+  }
+
+  .table-actions button {
+    margin: 0;
+  }
 }

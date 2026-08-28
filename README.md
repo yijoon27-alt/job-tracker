@@ -8,6 +8,8 @@
 2. **SQL Editor**에서 [`supabase-schema.sql`](./supabase-schema.sql) 전체를 한 번 실행합니다.
 3. 같은 SQL Editor에서 아래 문장만 따로 실행합니다. 이메일은 기존 기록을 가져갈 본인의 Google 이메일로 바꿉니다.
 
+이미 운영 중인 프로젝트에 새 버전을 반영할 때도 `supabase-schema.sql` 전체를 다시 실행합니다. 스크립트는 기존 지원 기록을 삭제하지 않고 `서류 작성 여부` 같은 새 필드와 권한만 안전하게 추가합니다.
+
 ```sql
 insert into private.legacy_migration_owners (email)
 values (lower('YOUR_GOOGLE_EMAIL@gmail.com'))
@@ -64,6 +66,7 @@ https://PROJECT_REF.supabase.co/auth/v1/callback
 ## 데이터 안전
 
 - 새 기록은 더 이상 `localStorage`를 원본 저장소로 사용하지 않습니다.
+- 서류 작성 체크 상태도 Supabase에 저장되어 다른 기기와 동기화됩니다.
 - 다른 사용자의 행은 RLS가 읽기·수정·삭제를 거부합니다.
 - 일반 사용자는 이전용 `legacy_id`, 소유자 ID와 생성 시각을 직접 쓰거나 수정할 권한이 없습니다.
 - 상단의 **내 데이터 백업** 버튼으로 언제든 JSON 백업을 받을 수 있습니다.

@@ -6,9 +6,9 @@
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self'; connect-src 'self' https://*.supabase.co; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests">
   <title>취업 공채 대시보드</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=20260828-dashboard-summary">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.min.js" integrity="sha384-yiVMs0R/Jyz7OhoXa/DsEMUSBLjEhr/QJta2ONO+zB6I8/GmNg/7AUFrZmAJV7KV" crossorigin="anonymous"></script>
-  <script type="module" src="app.js?v=20260825-deadline-sort"></script>
+  <script type="module" src="app.js?v=20260828-dashboard-summary"></script>
 </head>
 <body>
   <header class="page-header">
@@ -70,6 +70,15 @@
           <div class="form-row">
             <label for="dateInput">서류 제출 마감일</label>
             <input type="date" id="dateInput" required>
+          </div>
+          <div class="form-row">
+            <label class="check-option" for="documentPreparedInput">
+              <input type="checkbox" id="documentPreparedInput">
+              <span>
+                <strong>서류 작성 완료</strong>
+                <small>지원서 작성을 마쳤다면 체크하세요.</small>
+              </span>
+            </label>
           </div>
           <div class="form-row">
             <label for="linkInput">채용 사이트 링크</label>
@@ -139,6 +148,11 @@
           <h2>📊 공채 프로세스 현황판</h2>
           <div class="search-area">
             <input type="text" id="searchInput" placeholder="기업명 또는 직무 실시간 검색" autocomplete="off">
+            <select id="preparedFilter" aria-label="서류 작성 여부 필터">
+              <option value="전체">서류 전체</option>
+              <option value="미작성">미작성</option>
+              <option value="작성완료">작성 완료</option>
+            </select>
             <select id="statusFilter">
               <option value="전체">전체 현황</option>
               <option value="진행중">🏃 진행 중</option>
@@ -147,25 +161,49 @@
             </select>
           </div>
         </div>
-        <p id="countText">총 0개 기업 프로세스 추적 중</p>
+        <p id="countText">총 0개 공고 관리 중</p>
+        <section class="summary-grid" aria-label="지원 현황 요약" aria-live="polite">
+          <article class="summary-card summary-total">
+            <span class="summary-label">전체 공고</span>
+            <strong id="summaryTotal">0건</strong>
+            <small>현재 관리 중</small>
+          </article>
+          <article class="summary-card summary-prepared">
+            <span class="summary-label">서류 작성</span>
+            <strong id="summaryPrepared">0 / 0</strong>
+            <small id="summaryPreparedMeta">0% 완료</small>
+          </article>
+          <article class="summary-card summary-waiting">
+            <span class="summary-label">서류 결과 대기</span>
+            <strong id="summaryWaiting">0건</strong>
+            <small>작성 완료 건 기준</small>
+          </article>
+          <article class="summary-card summary-passed">
+            <span class="summary-label">서류 합격률</span>
+            <strong id="summaryDocPassRate">0%</strong>
+            <small id="summaryDocPassMeta">결과 0건</small>
+          </article>
+          <article class="summary-card summary-interview">
+            <span class="summary-label">면접 진행</span>
+            <strong id="summaryInterview">0건</strong>
+            <small id="summaryInterviewMeta">1차 0 · 2차 0</small>
+          </article>
+        </section>
         <div class="table-wrapper">
           <table class="excel-table">
+            <colgroup>
+              <col class="deadline-column">
+              <col class="job-column">
+              <col class="material-column">
+              <col class="process-column">
+              <col class="action-column">
+            </colgroup>
             <thead>
               <tr>
-                <th>D-Day</th>
-                <th>기업명</th>
-                <th>지원 직무</th>
-                <th>서류 마감일</th>
-                <th>채용 링크</th>
-                <th>직무기술서(JD)</th>
-                <th>우대사항</th>
-                <th>자기소개서</th>
-                <th>서류 결과</th>
-                <th>1차 면접일</th>
-                <th>1차 결과</th>
-                <th>2차 면접일</th>
-                <th>2차 결과</th>
-                <th>최종 결과</th>
+                <th>마감</th>
+                <th>기업 / 지원 직무</th>
+                <th>지원 자료</th>
+                <th>전형 현황</th>
                 <th class="actions-th">관리</th>
               </tr>
             </thead>

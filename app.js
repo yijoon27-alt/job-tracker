@@ -2,7 +2,7 @@ import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js'
 
 const LEGACY_STORAGE_KEY = 'excelJobs'
 const LEGACY_BACKUP_PREFIX = 'excelJobsBackup:'
-const DB_COLUMNS = 'id, company, role, deadline, link, jd, preferred, cover_letter, doc_status, interview1_date, interview1_result, interview2_date, interview2_result, final_status, created_at, updated_at'
+const DB_COLUMNS = 'id, company, role, deadline, link, jd, preferred, cover_letter, document_prepared, doc_status, interview1_date, interview1_result, interview2_date, interview2_result, final_status, created_at, updated_at'
 
 const DOC_STATUSES = ['대기', '합격', '탈락']
 const INTERVIEW_STATUSES = ['미대상', '대기', '합격', '탈락']
@@ -29,6 +29,7 @@ const jobForm = document.querySelector('#jobForm')
 const companyInput = document.querySelector('#companyInput')
 const roleInput = document.querySelector('#roleInput')
 const dateInput = document.querySelector('#dateInput')
+const documentPreparedInput = document.querySelector('#documentPreparedInput')
 const linkInput = document.querySelector('#linkInput')
 const jdInput = document.querySelector('#jdInput')
 const preferredInput = document.querySelector('#preferredInput')
@@ -42,10 +43,20 @@ const finalStatusInput = document.querySelector('#finalStatusInput')
 const submitButton = document.querySelector('#submitButton')
 const cancelEditButton = document.querySelector('#cancelEditButton')
 const searchInput = document.querySelector('#searchInput')
+const preparedFilter = document.querySelector('#preparedFilter')
 const statusFilter = document.querySelector('#statusFilter')
 const countText = document.querySelector('#countText')
 const emptyMessage = document.querySelector('#emptyMessage')
 const jobTableBody = document.querySelector('#jobTableBody')
+
+const summaryTotal = document.querySelector('#summaryTotal')
+const summaryPrepared = document.querySelector('#summaryPrepared')
+const summaryPreparedMeta = document.querySelector('#summaryPreparedMeta')
+const summaryWaiting = document.querySelector('#summaryWaiting')
+const summaryDocPassRate = document.querySelector('#summaryDocPassRate')
+const summaryDocPassMeta = document.querySelector('#summaryDocPassMeta')
+const summaryInterview = document.querySelector('#summaryInterview')
+const summaryInterviewMeta = document.querySelector('#summaryInterviewMeta')
 
 const textModal = document.querySelector('#textModal')
 const modalTitle = document.querySelector('#modalTitle')
@@ -244,6 +255,7 @@ function fromDatabaseJob(row) {
     jd: row.jd || '',
     preferred: row.preferred || '',
     coverLetter: row.cover_letter || '',
+    documentPrepared: row.document_prepared === true,
     docStatus: row.doc_status,
     interview1Date: row.interview1_date || '',
     interview1Result: row.interview1_result,
@@ -264,6 +276,7 @@ function getFormJobData() {
     jd: jdInput.value,
     preferred: preferredInput.value,
     cover_letter: coverLetterInput.value,
+    document_prepared: documentPreparedInput.checked,
     doc_status: docStatusInput.value,
     interview1_date: interview1Date.value || null,
     interview1_result: interview1Result.value,
@@ -330,21 +343,57 @@ function renderJobs() {
   const filteredJobs = getFilteredJobs()
   jobTableBody.replaceChildren()
   emptyMessage.hidden = filteredJobs.length > 0
-  countText.textContent = `총 ${jobs.length}개 기업 프로세스 추적 중`
+  countText.textContent = filteredJobs.length === jobs.length
+    ? `총 ${jobs.length}개 공고 관리 중`
+    : `총 ${jobs.length}개 중 ${filteredJobs.length}개 표시`
+
+  renderSummary()
 
   for (const job of filteredJobs) {
     jobTableBody.appendChild(createTableRow(job))
   }
 }
 
+function renderSummary() {
+  const totalCount = jobs.length
+  const preparedJobs = jobs.filter((job) => job.documentPrepared)
+  const preparedCount = preparedJobs.length
+  const waitingCount = preparedJobs.filter((job) => job.docStatus === '대기').length
+  const decidedDocuments = preparedJobs.filter((job) => ['합격', '탈락'].includes(job.docStatus))
+  const passedDocuments = decidedDocuments.filter((job) => job.docStatus === '합격').length
+  const documentPassRate = percentage(passedDocuments, decidedDocuments.length)
+  const interview1Count = preparedJobs.filter((job) => job.interview1Result === '대기').length
+  const interview2Count = preparedJobs.filter((job) => job.interview2Result === '대기').length
+
+  summaryTotal.textContent = `${totalCount}건`
+  summaryPrepared.textContent = `${preparedCount} / ${totalCount}`
+  summaryPreparedMeta.textContent = `${percentage(preparedCount, totalCount)}% 완료`
+  summaryWaiting.textContent = `${waitingCount}건`
+  summaryDocPassRate.textContent = `${documentPassRate}%`
+  summaryDocPassMeta.textContent = decidedDocuments.length > 0
+    ? `합격 ${passedDocuments} · 결과 ${decidedDocuments.length}`
+    : '결과 0건'
+  summaryInterview.textContent = `${interview1Count + interview2Count}건`
+  summaryInterviewMeta.textContent = `1차 ${interview1Count} · 2차 ${interview2Count}`
+}
+
+function percentage(value, total) {
+  return total > 0 ? Math.round((value / total) * 100) : 0
+}
+
 function getFilteredJobs() {
   const keyword = searchInput.value.trim().toLowerCase()
   const selectedStatus = statusFilter.value
+  const selectedPrepared = preparedFilter.value
 
   return jobs
     .filter((job) => {
       const searchText = `${job.company} ${job.role}`.toLowerCase()
-      return searchText.includes(keyword) && (selectedStatus === '전체' || job.finalStatus === selectedStatus)
+      const matchesStatus = selectedStatus === '전체' || job.finalStatus === selectedStatus
+      const matchesPrepared = selectedPrepared === '전체'
+        || (selectedPrepared === '작성완료' && job.documentPrepared)
+        || (selectedPrepared === '미작성' && !job.documentPrepared)
+      return searchText.includes(keyword) && matchesStatus && matchesPrepared
     })
     .sort(compareJobsByDeadline)
 }
@@ -358,23 +407,17 @@ function compareJobsByDeadline(firstJob, secondJob) {
 
 function createTableRow(job) {
   const row = document.createElement('tr')
-  appendTextCell(row, calculateDDay(job.date), 'td-dday')
-  appendTextCell(row, job.company, 'company-cell')
-  appendTextCell(row, job.role)
-  appendTextCell(row, job.date)
-  appendLinkCell(row, job.link)
-  appendDetailCell(row, job.jd, 'JD 보기', () => openModal(job.company, `${job.role} - 직무기술서(JD)`, job.jd))
-  appendDetailCell(row, job.preferred, '우대 보기', () => openModal(job.company, `${job.role} - 우대사항`, job.preferred), 'pref-btn')
-  appendDetailCell(row, job.coverLetter, '자소서 보기', () => openModal(job.company, `${job.role} - 자기소개서`, job.coverLetter), 'cl-btn')
-  appendStatusCell(row, job.docStatus)
-  appendTextCell(row, job.interview1Date || '-')
-  appendStatusCell(row, job.interview1Result)
-  appendTextCell(row, job.interview2Date || '-')
-  appendStatusCell(row, job.interview2Result)
-  appendStatusCell(row, job.finalStatus)
+  row.className = job.documentPrepared ? 'is-prepared' : 'is-not-prepared'
+  row.append(
+    createDeadlineCell(job),
+    createJobCell(job),
+    createMaterialsCell(job),
+    createProcessCell(job)
+  )
 
   const actionsCell = document.createElement('td')
   actionsCell.className = 'table-actions'
+  actionsCell.dataset.label = '관리'
   actionsCell.append(
     createButton('수정', 'edit-btn', () => startEdit(job.id)),
     createButton('삭제', 'delete-btn', () => void deleteJob(job.id))
@@ -383,50 +426,173 @@ function createTableRow(job) {
   return row
 }
 
-function appendTextCell(row, text, className = '') {
+function createDeadlineCell(job) {
   const cell = document.createElement('td')
-  if (className) cell.className = className
-  cell.textContent = String(text ?? '')
-  row.appendChild(cell)
+  cell.className = 'deadline-cell'
+  cell.dataset.label = '마감'
+
+  const dDay = document.createElement('strong')
+  dDay.className = 'td-dday'
+  dDay.textContent = calculateDDay(job.date)
+
+  const date = document.createElement('time')
+  date.dateTime = job.date
+  date.textContent = job.date
+  cell.append(dDay, date)
+  return cell
 }
 
-function appendLinkCell(row, link) {
+function createJobCell(job) {
   const cell = document.createElement('td')
+  cell.className = 'job-cell'
+  cell.dataset.label = '기업 / 직무'
+
+  const company = document.createElement('strong')
+  company.className = 'company-name'
+  company.textContent = job.company
+
+  const role = document.createElement('span')
+  role.className = 'job-role'
+  role.textContent = job.role
+
+  const preparedLabel = document.createElement('label')
+  preparedLabel.className = `prepared-toggle${job.documentPrepared ? ' is-complete' : ''}`
+
+  const preparedCheckbox = document.createElement('input')
+  preparedCheckbox.type = 'checkbox'
+  preparedCheckbox.checked = job.documentPrepared
+  preparedCheckbox.setAttribute('aria-label', `${job.company} 서류 작성 완료`)
+  preparedCheckbox.addEventListener('change', () => {
+    void updateDocumentPrepared(job, preparedCheckbox)
+  })
+
+  const preparedText = document.createElement('span')
+  preparedText.textContent = job.documentPrepared ? '서류 작성 완료' : '서류 미작성'
+  preparedLabel.append(preparedCheckbox, preparedText)
+  cell.append(company, role, preparedLabel)
+  return cell
+}
+
+async function updateDocumentPrepared(job, checkbox) {
+  if (!currentUser) return
+  const nextValue = checkbox.checked
+  checkbox.disabled = true
+
+  const { data, error } = await supabaseClient
+    .from('jobs')
+    .update({ document_prepared: nextValue })
+    .eq('id', job.id)
+    .eq('user_id', currentUser.id)
+    .select('document_prepared, updated_at')
+    .single()
+
+  if (error) {
+    checkbox.checked = job.documentPrepared
+    checkbox.disabled = false
+    showAppMessage('서류 작성 상태를 저장하지 못했습니다. 인터넷 연결과 DB 설정을 확인해 주세요.', true)
+    return
+  }
+
+  job.documentPrepared = data.document_prepared === true
+  job.updatedAt = data.updated_at
+  renderJobs()
+  showAppMessage(job.documentPrepared ? '서류 작성 완료로 저장했습니다.' : '서류 미작성으로 변경했습니다.')
+}
+
+function createMaterialsCell(job) {
+  const cell = document.createElement('td')
+  cell.className = 'materials-cell'
+  cell.dataset.label = '지원 자료'
+
+  appendMaterialLink(cell, job.link)
+  appendMaterialButton(cell, job.jd, 'JD', 'jd-btn', () => {
+    openModal(job.company, `${job.role} - 직무기술서(JD)`, job.jd)
+  })
+  appendMaterialButton(cell, job.preferred, '우대', 'pref-btn', () => {
+    openModal(job.company, `${job.role} - 우대사항`, job.preferred)
+  })
+  appendMaterialButton(cell, job.coverLetter, '자소서', 'cl-btn', () => {
+    openModal(job.company, `${job.role} - 자기소개서`, job.coverLetter)
+  })
+  return cell
+}
+
+function appendMaterialLink(cell, link) {
   const safeUrl = safeHttpUrl(link)
-
   if (!safeUrl) {
-    cell.textContent = '-'
-  } else {
-    const anchor = document.createElement('a')
-    anchor.href = safeUrl
-    anchor.target = '_blank'
-    anchor.rel = 'noopener noreferrer'
-    anchor.className = 'link-btn'
-    anchor.textContent = '이동'
-    cell.appendChild(anchor)
+    cell.appendChild(createEmptyMaterial('채용'))
+    return
   }
 
-  row.appendChild(cell)
+  const anchor = document.createElement('a')
+  anchor.href = safeUrl
+  anchor.target = '_blank'
+  anchor.rel = 'noopener noreferrer'
+  anchor.className = 'material-btn link-btn'
+  anchor.textContent = '채용 ↗'
+  cell.appendChild(anchor)
 }
 
-function appendDetailCell(row, value, label, onClick, extraClass = '') {
-  const cell = document.createElement('td')
+function appendMaterialButton(cell, value, label, extraClass, onClick) {
   if (!value) {
-    cell.textContent = '-'
-  } else {
-    const button = createButton(label, `view-btn ${extraClass}`.trim(), onClick)
-    cell.appendChild(button)
+    cell.appendChild(createEmptyMaterial(label))
+    return
   }
-  row.appendChild(cell)
+
+  cell.appendChild(createButton(label, `material-btn view-btn ${extraClass}`, onClick))
 }
 
-function appendStatusCell(row, status) {
+function createEmptyMaterial(label) {
+  const empty = document.createElement('span')
+  empty.className = 'material-btn material-empty'
+  empty.textContent = label
+  empty.title = `${label} 자료 없음`
+  return empty
+}
+
+function createProcessCell(job) {
   const cell = document.createElement('td')
+  cell.className = 'process-cell'
+  cell.dataset.label = '전형 현황'
+
+  const grid = document.createElement('div')
+  grid.className = 'process-grid'
+  appendProcessStage(grid, '서류', job.docStatus)
+  appendProcessStage(grid, '1차', job.interview1Result, job.interview1Date)
+  appendProcessStage(grid, '2차', job.interview2Result, job.interview2Date)
+  appendProcessStage(grid, '최종', job.finalStatus)
+  cell.appendChild(grid)
+  return cell
+}
+
+function appendProcessStage(grid, label, status, dateValue = '') {
+  const stage = document.createElement('div')
+  stage.className = 'process-stage'
+
+  const heading = document.createElement('div')
+  heading.className = 'process-heading'
+  const stageLabel = document.createElement('span')
+  stageLabel.className = 'process-label'
+  stageLabel.textContent = label
+  heading.appendChild(stageLabel)
+
+  if (dateValue) {
+    const date = document.createElement('time')
+    date.dateTime = dateValue
+    date.textContent = dateValue.replaceAll('-', '.')
+    date.title = dateValue
+    heading.appendChild(date)
+  }
+
+  stage.append(heading, createStatusPill(status))
+  grid.appendChild(stage)
+}
+
+function createStatusPill(status) {
   const pill = document.createElement('span')
   pill.className = `status-pill ${statusClassName(status)}`
   pill.textContent = status
-  cell.appendChild(pill)
-  row.appendChild(cell)
+  return pill
 }
 
 function statusClassName(status) {
@@ -477,6 +643,7 @@ function startEdit(id) {
   companyInput.value = target.company
   roleInput.value = target.role
   dateInput.value = target.date
+  documentPreparedInput.checked = target.documentPrepared
   linkInput.value = target.link
   jdInput.value = target.jd
   preferredInput.value = target.preferred
@@ -542,6 +709,7 @@ document.addEventListener('keydown', (event) => {
 })
 
 searchInput.addEventListener('input', renderJobs)
+preparedFilter.addEventListener('change', renderJobs)
 statusFilter.addEventListener('change', renderJobs)
 cancelEditButton.addEventListener('click', resetForm)
 linkInput.addEventListener('input', () => linkInput.setCustomValidity(''))
@@ -637,6 +805,7 @@ function normalizeLegacyJob(job, index) {
     jd: cleanText(job.jd, 50000),
     preferred: cleanText(job.preferred, 50000),
     cover_letter: cleanText(job.coverLetter, 200000),
+    document_prepared: job.documentPrepared === true,
     doc_status: allowedValue(job.docStatus, DOC_STATUSES, '대기'),
     interview1_date: optionalDate(job.interview1Date),
     interview1_result: allowedValue(job.interview1Result, INTERVIEW_STATUSES, '미대상'),
@@ -684,6 +853,7 @@ exportButton.addEventListener('click', () => {
     jd: job.jd,
     preferred: job.preferred,
     coverLetter: job.coverLetter,
+    documentPrepared: job.documentPrepared,
     docStatus: job.docStatus,
     interview1Date: job.interview1Date,
     interview1Result: job.interview1Result,

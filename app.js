@@ -82,6 +82,8 @@ const summaryDocPassMeta = document.querySelector('#summaryDocPassMeta')
 const summaryInterview = document.querySelector('#summaryInterview')
 const summaryInterviewMeta = document.querySelector('#summaryInterviewMeta')
 
+const timeInputs = [deadlineTimeInput, assessmentTimeInput]
+
 const textModal = document.querySelector('#textModal')
 const modalTitle = document.querySelector('#modalTitle')
 const modalBodyText = document.querySelector('#modalBodyText')
@@ -442,32 +444,49 @@ function compareJobsByDeadline(firstJob, secondJob) {
   const secondFinished = isJobRejected(secondJob) || secondJob.finalStatus === '최종합격'
   if (firstFinished !== secondFinished) return firstFinished ? 1 : -1
 
-  const firstClosed = isDeadlinePassed(firstJob.date, firstJob.deadlineTime)
-  const secondClosed = isDeadlinePassed(secondJob.date, secondJob.deadlineTime)
-  if (firstClosed !== secondClosed) return firstClosed ? 1 : -1
-
   const firstPending = hasPendingWork(firstJob)
   const secondPending = hasPendingWork(secondJob)
   if (firstPending !== secondPending) return firstPending ? -1 : 1
 
+  const first = nextDeadline(firstJob)
+  const second = nextDeadline(secondJob)
+  const firstClosed = isDeadlinePassed(first.date, first.time)
+  const secondClosed = isDeadlinePassed(second.date, second.time)
+  if (firstClosed !== secondClosed) return firstClosed ? 1 : -1
+
   const deadlineOrder = firstClosed
-    ? secondJob.date.localeCompare(firstJob.date)
-    : firstJob.date.localeCompare(secondJob.date)
+    ? second.date.localeCompare(first.date)
+    : first.date.localeCompare(second.date)
   if (deadlineOrder !== 0) return deadlineOrder
 
   return String(firstJob.createdAt || '').localeCompare(String(secondJob.createdAt || ''))
 }
 
+function isAssessmentPending(job) {
+  return Boolean(job.assessmentDate)
+    && !job.assessmentDone
+    && !isDeadlinePassed(job.assessmentDate, job.assessmentTime)
+}
+
+// 아직 손댈 일이 남은 공고인지. 마감이 이미 지난 미작성 공고는 할 일이 아니라 놓친 공고다.
 function hasPendingWork(job) {
-  if (!job.documentPrepared) return true
-  if (job.assessmentDate && !job.assessmentDone
-    && !isDeadlinePassed(job.assessmentDate, job.assessmentTime)) return true
-  return false
+  if (!job.documentPrepared && !isDeadlinePassed(job.date, job.deadlineTime)) return true
+  return isAssessmentPending(job)
+}
+
+// 정렬과 행 강조에 쓰는 '다음에 지켜야 할 마감'.
+// 서류를 다 썼고 역량검사만 남았다면 서류 마감이 아니라 역량검사 마감이 기준이 된다.
+function nextDeadline(job) {
+  if (job.documentPrepared && isAssessmentPending(job)) {
+    return { date: job.assessmentDate, time: job.assessmentTime }
+  }
+  return { date: job.date, time: job.deadlineTime }
 }
 
 function createTableRow(job) {
   const row = document.createElement('tr')
-  row.classList.add(deadlineClassName(job.date, job.deadlineTime))
+  const next = nextDeadline(job)
+  row.classList.add(deadlineClassName(next.date, next.time))
   if (isJobRejected(job)) row.classList.add('is-rejected')
   row.append(
     createDeadlineCell(job),
@@ -922,6 +941,7 @@ function resetForm() {
   editingId = null
   jobForm.reset()
   linkInput.setCustomValidity('')
+  clearTimeValidity()
   submitButton.textContent = '등록하기'
   cancelEditButton.hidden = true
 }
@@ -992,6 +1012,20 @@ closeFormButton.addEventListener('click', cancelJobForm)
 formBackdrop.addEventListener('click', cancelJobForm)
 cancelEditButton.addEventListener('click', cancelJobForm)
 linkInput.addEventListener('input', () => linkInput.setCustomValidity(''))
+
+// 시간 칸은 오전·오후, 시, 분을 모두 채워야 값이 만들어진다.
+// 하나라도 비면 브라우저가 '유효하지 않은 값'으로 막으므로 무엇을 해야 하는지 알려준다.
+function clearTimeValidity() {
+  for (const timeInput of timeInputs) timeInput.setCustomValidity('')
+}
+
+for (const timeInput of timeInputs) {
+  timeInput.addEventListener('invalid', () => {
+    timeInput.setCustomValidity('오전·오후, 시, 분을 모두 채우거나 시간 칸을 완전히 비워 주세요.')
+  })
+  timeInput.addEventListener('input', () => timeInput.setCustomValidity(''))
+  timeInput.addEventListener('change', () => timeInput.setCustomValidity(''))
+}
 
 function readLegacyJobs() {
   let raw

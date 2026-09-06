@@ -2,7 +2,22 @@ import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js'
 
 const LEGACY_STORAGE_KEY = 'excelJobs'
 const LEGACY_BACKUP_PREFIX = 'excelJobsBackup:'
-const DB_COLUMNS = 'id, company, role, deadline, link, jd, preferred, cover_letter, document_prepared, doc_status, interview1_date, interview1_result, interview2_date, interview2_result, final_status, created_at, updated_at'
+const DB_COLUMNS = 'id, company, role, deadline, deadline_time, link, jd, preferred, cover_letter, document_prepared, assessment_deadline, assessment_time, assessment_done, doc_status, interview1_date, interview1_result, interview2_date, interview2_result, final_status, created_at, updated_at'
+
+const DOCUMENT_PREPARED_FLAG = {
+  column: 'document_prepared',
+  localKey: 'documentPrepared',
+  onText: '서류 작성 완료로 저장했습니다.',
+  offText: '서류 미작성으로 변경했습니다.',
+  errorText: '서류 작성 상태를 저장하지 못했습니다. 인터넷 연결과 DB 설정을 확인해 주세요.'
+}
+const ASSESSMENT_DONE_FLAG = {
+  column: 'assessment_done',
+  localKey: 'assessmentDone',
+  onText: '역량검사 응시 완료로 저장했습니다.',
+  offText: '역량검사 미응시로 변경했습니다.',
+  errorText: '역량검사 응시 상태를 저장하지 못했습니다. 인터넷 연결과 DB 설정을 확인해 주세요.'
+}
 
 const DOC_STATUSES = ['대기', '합격', '탈락']
 const INTERVIEW_STATUSES = ['미대상', '대기', '합격', '탈락']
@@ -34,7 +49,11 @@ const jobForm = document.querySelector('#jobForm')
 const companyInput = document.querySelector('#companyInput')
 const roleInput = document.querySelector('#roleInput')
 const dateInput = document.querySelector('#dateInput')
+const deadlineTimeInput = document.querySelector('#deadlineTimeInput')
 const documentPreparedInput = document.querySelector('#documentPreparedInput')
+const assessmentDateInput = document.querySelector('#assessmentDateInput')
+const assessmentTimeInput = document.querySelector('#assessmentTimeInput')
+const assessmentDoneInput = document.querySelector('#assessmentDoneInput')
 const linkInput = document.querySelector('#linkInput')
 const jdInput = document.querySelector('#jdInput')
 const preferredInput = document.querySelector('#preferredInput')
@@ -258,11 +277,15 @@ function fromDatabaseJob(row) {
     company: row.company,
     role: row.role,
     date: row.deadline,
+    deadlineTime: toTimeInputValue(row.deadline_time),
     link: row.link || '',
     jd: row.jd || '',
     preferred: row.preferred || '',
     coverLetter: row.cover_letter || '',
     documentPrepared: row.document_prepared === true,
+    assessmentDate: row.assessment_deadline || '',
+    assessmentTime: toTimeInputValue(row.assessment_time),
+    assessmentDone: row.assessment_done === true,
     docStatus: row.doc_status,
     interview1Date: row.interview1_date || '',
     interview1Result: row.interview1_result,
@@ -279,11 +302,15 @@ function getFormJobData() {
     company: companyInput.value.trim(),
     role: roleInput.value.trim(),
     deadline: dateInput.value,
+    deadline_time: deadlineTimeInput.value || null,
     link: safeHttpUrl(linkInput.value.trim()),
     jd: jdInput.value,
     preferred: preferredInput.value,
     cover_letter: coverLetterInput.value,
     document_prepared: documentPreparedInput.checked,
+    assessment_deadline: assessmentDateInput.value || null,
+    assessment_time: assessmentTimeInput.value || null,
+    assessment_done: assessmentDoneInput.checked,
     doc_status: docStatusInput.value,
     interview1_date: interview1Date.value || null,
     interview1_result: interview1Result.value,
@@ -415,9 +442,13 @@ function compareJobsByDeadline(firstJob, secondJob) {
   const secondFinished = isJobRejected(secondJob) || secondJob.finalStatus === '최종합격'
   if (firstFinished !== secondFinished) return firstFinished ? 1 : -1
 
-  const firstClosed = daysUntilDeadline(firstJob.date) < 0
-  const secondClosed = daysUntilDeadline(secondJob.date) < 0
+  const firstClosed = isDeadlinePassed(firstJob.date, firstJob.deadlineTime)
+  const secondClosed = isDeadlinePassed(secondJob.date, secondJob.deadlineTime)
   if (firstClosed !== secondClosed) return firstClosed ? 1 : -1
+
+  const firstPending = hasPendingWork(firstJob)
+  const secondPending = hasPendingWork(secondJob)
+  if (firstPending !== secondPending) return firstPending ? -1 : 1
 
   const deadlineOrder = firstClosed
     ? secondJob.date.localeCompare(firstJob.date)
@@ -427,9 +458,16 @@ function compareJobsByDeadline(firstJob, secondJob) {
   return String(firstJob.createdAt || '').localeCompare(String(secondJob.createdAt || ''))
 }
 
+function hasPendingWork(job) {
+  if (!job.documentPrepared) return true
+  if (job.assessmentDate && !job.assessmentDone
+    && !isDeadlinePassed(job.assessmentDate, job.assessmentTime)) return true
+  return false
+}
+
 function createTableRow(job) {
   const row = document.createElement('tr')
-  row.classList.add(deadlineClassName(job.date))
+  row.classList.add(deadlineClassName(job.date, job.deadlineTime))
   if (isJobRejected(job)) row.classList.add('is-rejected')
   row.append(
     createDeadlineCell(job),
@@ -457,13 +495,69 @@ function createDeadlineCell(job) {
 
   const dDay = document.createElement('strong')
   dDay.className = 'td-dday'
-  dDay.textContent = calculateDDay(job.date)
+  dDay.textContent = calculateDDay(job.date, job.deadlineTime)
 
   const date = document.createElement('time')
-  date.dateTime = job.date
-  date.textContent = job.date
+  date.dateTime = momentAttribute(job.date, job.deadlineTime)
+  date.textContent = momentText(job.date, job.deadlineTime)
   cell.append(dDay, date)
+
+  const assessment = createAssessmentBlock(job)
+  if (assessment) cell.appendChild(assessment)
   return cell
+}
+
+function createAssessmentBlock(job) {
+  if (!job.assessmentDate) return null
+
+  const block = document.createElement('div')
+  block.className = 'assessment-line'
+
+  const badge = document.createElement('span')
+  badge.className = `assessment-badge ${assessmentBadgeClassName(job)}`
+  badge.textContent = assessmentBadgeText(job)
+
+  const toggle = document.createElement('label')
+  toggle.className = `prepared-toggle assessment-toggle${job.assessmentDone ? ' is-complete' : ''}`
+
+  const checkbox = document.createElement('input')
+  checkbox.type = 'checkbox'
+  checkbox.checked = job.assessmentDone
+  checkbox.setAttribute('aria-label', `${job.company} AI 역량검사 응시 완료`)
+  checkbox.addEventListener('change', () => {
+    void updateJobFlag(job, ASSESSMENT_DONE_FLAG, checkbox)
+  })
+
+  const toggleText = document.createElement('span')
+  toggleText.textContent = job.assessmentDone ? '응시 완료' : '미응시'
+  toggle.append(checkbox, toggleText)
+
+  const head = document.createElement('div')
+  head.className = 'assessment-head'
+  head.append(badge, toggle)
+
+  const moment = document.createElement('time')
+  moment.className = 'assessment-time'
+  moment.dateTime = momentAttribute(job.assessmentDate, job.assessmentTime)
+  moment.textContent = momentText(job.assessmentDate, job.assessmentTime)
+
+  block.append(head, moment)
+  return block
+}
+
+function assessmentBadgeText(job) {
+  if (job.assessmentDone) return '검사 완료'
+  if (isDeadlinePassed(job.assessmentDate, job.assessmentTime)) return '검사 마감'
+  const diffDays = daysUntilDeadline(job.assessmentDate)
+  if (diffDays === null) return '검사'
+  return diffDays === 0 ? '검사 D-Day' : `검사 D-${diffDays}`
+}
+
+function assessmentBadgeClassName(job) {
+  if (job.assessmentDone) return 'is-done'
+  if (isDeadlinePassed(job.assessmentDate, job.assessmentTime)) return 'is-closed'
+  const diffDays = daysUntilDeadline(job.assessmentDate)
+  return diffDays !== null && diffDays <= 3 ? 'is-urgent' : 'is-open'
 }
 
 function createJobCell(job) {
@@ -496,7 +590,7 @@ function createPreparedCell(job) {
   preparedCheckbox.checked = job.documentPrepared
   preparedCheckbox.setAttribute('aria-label', `${job.company} 서류 작성 완료`)
   preparedCheckbox.addEventListener('change', () => {
-    void updateDocumentPrepared(job, preparedCheckbox)
+    void updateJobFlag(job, DOCUMENT_PREPARED_FLAG, preparedCheckbox)
   })
 
   const preparedText = document.createElement('span')
@@ -506,30 +600,30 @@ function createPreparedCell(job) {
   return cell
 }
 
-async function updateDocumentPrepared(job, checkbox) {
+async function updateJobFlag(job, flag, checkbox) {
   if (!currentUser) return
   const nextValue = checkbox.checked
   checkbox.disabled = true
 
   const { data, error } = await supabaseClient
     .from('jobs')
-    .update({ document_prepared: nextValue })
+    .update({ [flag.column]: nextValue })
     .eq('id', job.id)
     .eq('user_id', currentUser.id)
-    .select('document_prepared, updated_at')
+    .select(`${flag.column}, updated_at`)
     .single()
 
   if (error) {
-    checkbox.checked = job.documentPrepared
+    checkbox.checked = job[flag.localKey]
     checkbox.disabled = false
-    showAppMessage('서류 작성 상태를 저장하지 못했습니다. 인터넷 연결과 DB 설정을 확인해 주세요.', true)
+    showAppMessage(flag.errorText, true)
     return
   }
 
-  job.documentPrepared = data.document_prepared === true
+  job[flag.localKey] = data[flag.column] === true
   job.updatedAt = data.updated_at
   renderJobs()
-  showAppMessage(job.documentPrepared ? '서류 작성 완료로 저장했습니다.' : '서류 미작성으로 변경했습니다.')
+  showAppMessage(job[flag.localKey] ? flag.onText : flag.offText)
 }
 
 function createMaterialsCell(job) {
@@ -714,12 +808,41 @@ function safeHttpUrl(value) {
   }
 }
 
-function calculateDDay(dateString) {
+function calculateDDay(dateString, timeString) {
   const diffDays = daysUntilDeadline(dateString)
   if (diffDays === null) return '-'
-  if (diffDays === 0) return 'D-Day'
   if (diffDays > 0) return `D-${diffDays}`
+  if (diffDays === 0 && !isDeadlinePassed(dateString, timeString)) return 'D-Day'
   return '마감'
+}
+
+function toTimeInputValue(value) {
+  const text = String(value ?? '')
+  return /^\d{2}:\d{2}/.test(text) ? text.slice(0, 5) : ''
+}
+
+function momentText(dateString, timeString) {
+  const time = toTimeInputValue(timeString)
+  return time ? `${dateString} ${time}` : dateString
+}
+
+function momentAttribute(dateString, timeString) {
+  const time = toTimeInputValue(timeString)
+  return time ? `${dateString}T${time}` : dateString
+}
+
+function deadlineMoment(dateString, timeString) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateString || '')) return null
+  const [year, month, day] = dateString.split('-').map(Number)
+  const time = toTimeInputValue(timeString)
+  const [hours, minutes] = time ? time.split(':').map(Number) : [23, 59]
+  // 시각 미입력이면 그날 끝(23:59:59)까지 유효하다고 본다
+  return new Date(year, month - 1, day, hours, minutes, time ? 0 : 59, 0)
+}
+
+function isDeadlinePassed(dateString, timeString) {
+  const moment = deadlineMoment(dateString, timeString)
+  return moment !== null && moment.getTime() < Date.now()
 }
 
 function daysUntilDeadline(dateString) {
@@ -732,9 +855,9 @@ function daysUntilDeadline(dateString) {
   return Math.round((targetDate - today) / 86400000)
 }
 
-function deadlineClassName(dateString) {
+function deadlineClassName(dateString, timeString) {
   const diffDays = daysUntilDeadline(dateString)
-  if (diffDays === null || diffDays < 0) return 'deadline-closed'
+  if (diffDays === null || isDeadlinePassed(dateString, timeString)) return 'deadline-closed'
   if (diffDays <= 3) return 'deadline-urgent'
   if (diffDays <= 7) return 'deadline-soon'
   return 'deadline-open'
@@ -748,7 +871,11 @@ function startEdit(id) {
   companyInput.value = target.company
   roleInput.value = target.role
   dateInput.value = target.date
+  deadlineTimeInput.value = target.deadlineTime
   documentPreparedInput.checked = target.documentPrepared
+  assessmentDateInput.value = target.assessmentDate
+  assessmentTimeInput.value = target.assessmentTime
+  assessmentDoneInput.checked = target.assessmentDone
   linkInput.value = target.link
   jdInput.value = target.jd
   preferredInput.value = target.preferred
@@ -1001,11 +1128,15 @@ exportButton.addEventListener('click', () => {
     company: job.company,
     role: job.role,
     date: job.date,
+    deadlineTime: job.deadlineTime,
     link: job.link,
     jd: job.jd,
     preferred: job.preferred,
     coverLetter: job.coverLetter,
     documentPrepared: job.documentPrepared,
+    assessmentDate: job.assessmentDate,
+    assessmentTime: job.assessmentTime,
+    assessmentDone: job.assessmentDone,
     docStatus: job.docStatus,
     interview1Date: job.interview1Date,
     interview1Result: job.interview1Result,

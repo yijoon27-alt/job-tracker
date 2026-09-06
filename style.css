@@ -378,6 +378,12 @@ textarea:focus {
   font-weight: 500;
 }
 
+.form-row .form-hint {
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 500;
+}
+
 .button-area {
   display: flex;
   gap: 6px;
@@ -499,11 +505,11 @@ button {
 .summary-passed strong { color: #1d4ed8; }
 .summary-interview strong { color: #7c3aed; }
 
-.deadline-column { width: 10%; }
+.deadline-column { width: 13%; }
 .job-column { width: 22%; }
 .prepared-column { width: 13%; }
 .material-column { width: 18%; }
-.process-column { width: 30%; }
+.process-column { width: 27%; }
 .action-column { width: 7%; }
 
 .table-wrapper {
@@ -676,6 +682,63 @@ button {
 
 .prepared-cell {
   vertical-align: middle !important;
+}
+
+.assessment-line {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed #e2e8f0;
+}
+
+.assessment-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.assessment-badge {
+  padding: 3px 6px;
+  color: #475569;
+  background-color: #f1f5f9;
+  border-radius: 5px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.assessment-badge.is-open {
+  color: #6d28d9;
+  background-color: #f5f3ff;
+}
+
+.assessment-badge.is-urgent {
+  color: #dc2626;
+  background-color: #fef2f2;
+}
+
+.assessment-badge.is-done {
+  color: #15803d;
+  background-color: #f0fdf4;
+}
+
+.assessment-badge.is-closed {
+  color: #64748b;
+  background-color: #f1f5f9;
+}
+
+.assessment-toggle {
+  padding: 3px 6px;
+  gap: 4px;
+  font-size: 9px;
+}
+
+.assessment-toggle input {
+  width: 13px;
+  height: 13px;
+}
+
+.deadline-cell .assessment-time {
+  font-size: 9px;
 }
 
 .materials-cell {
@@ -1048,12 +1111,12 @@ button {
     letter-spacing: 0.06em;
   }
 
-  .deadline-cell strong,
-  .deadline-cell time {
+  .deadline-cell > strong,
+  .deadline-cell > time {
     display: inline;
   }
 
-  .deadline-cell time {
+  .deadline-cell > time {
     margin: 0 0 0 8px;
   }
 

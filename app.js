@@ -304,14 +304,14 @@ function getFormJobData() {
     company: companyInput.value.trim(),
     role: roleInput.value.trim(),
     deadline: dateInput.value,
-    deadline_time: deadlineTimeInput.value || null,
+    deadline_time: normalizeTimeText(deadlineTimeInput.value) || null,
     link: safeHttpUrl(linkInput.value.trim()),
     jd: jdInput.value,
     preferred: preferredInput.value,
     cover_letter: coverLetterInput.value,
     document_prepared: documentPreparedInput.checked,
     assessment_deadline: assessmentDateInput.value || null,
-    assessment_time: assessmentTimeInput.value || null,
+    assessment_time: normalizeTimeText(assessmentTimeInput.value) || null,
     assessment_done: assessmentDoneInput.checked,
     doc_status: docStatusInput.value,
     interview1_date: interview1Date.value || null,
@@ -333,6 +333,16 @@ jobForm.addEventListener('submit', async (event) => {
     return
   }
   linkInput.setCustomValidity('')
+
+  for (const timeInput of timeInputs) {
+    if (normalizeTimeText(timeInput.value) !== null) {
+      timeInput.setCustomValidity('')
+      continue
+    }
+    timeInput.setCustomValidity('시각은 18:00 처럼 24시간제로 적어 주세요. 비워두어도 됩니다.')
+    timeInput.reportValidity()
+    return
+  }
 
   setJobFormBusy(true)
   showAppMessage(editingId === null ? '기록을 저장하는 중입니다.' : '기록을 수정하는 중입니다.')
@@ -1013,18 +1023,51 @@ formBackdrop.addEventListener('click', cancelJobForm)
 cancelEditButton.addEventListener('click', cancelJobForm)
 linkInput.addEventListener('input', () => linkInput.setCustomValidity(''))
 
-// 시간 칸은 오전·오후, 시, 분을 모두 채워야 값이 만들어진다.
-// 하나라도 비면 브라우저가 '유효하지 않은 값'으로 막으므로 무엇을 해야 하는지 알려준다.
+// 시각은 브라우저 시간 위젯 대신 직접 입력받는다.
+// 오전·오후 칸을 키보드로만 바꿀 수 있는 위젯 때문에 값이 만들어지지 않는 문제를 피한다.
+// 빈 값은 '', 못 알아들은 값은 null, 알아들은 값은 'HH:MM'을 돌려준다.
+function normalizeTimeText(value) {
+  const raw = String(value ?? '')
+    .replace(/[\uFF10-\uFF19]/g, (digit) => String.fromCharCode(digit.charCodeAt(0) - 0xFEE0))
+    .replace(/[:\uFF1A]/g, ':')
+    .trim()
+  if (!raw) return ''
+
+  const isPm = /오후|p\.?m\.?/i.test(raw)
+  const isAm = /오전|a\.?m\.?/i.test(raw)
+  const text = raw.replace(/오전|오후|a\.?m\.?|p\.?m\.?|시|분/gi, '').replace(/\s+/g, '')
+
+  let hours
+  let minutes
+  const colonMatch = text.match(/^(\d{1,2}):(\d{1,2})$/)
+  if (colonMatch) {
+    hours = Number(colonMatch[1])
+    minutes = Number(colonMatch[2])
+  } else if (/^\d{1,4}$/.test(text)) {
+    hours = text.length <= 2 ? Number(text) : Number(text.slice(0, -2))
+    minutes = text.length <= 2 ? 0 : Number(text.slice(-2))
+  } else {
+    return null
+  }
+
+  if (isPm && hours < 12) hours += 12
+  if (isAm && hours === 12) hours = 0
+  if (hours > 23 || minutes > 59) return null
+
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
+}
+
 function clearTimeValidity() {
   for (const timeInput of timeInputs) timeInput.setCustomValidity('')
 }
 
 for (const timeInput of timeInputs) {
-  timeInput.addEventListener('invalid', () => {
-    timeInput.setCustomValidity('오전·오후, 시, 분을 모두 채우거나 시간 칸을 완전히 비워 주세요.')
-  })
   timeInput.addEventListener('input', () => timeInput.setCustomValidity(''))
-  timeInput.addEventListener('change', () => timeInput.setCustomValidity(''))
+  timeInput.addEventListener('blur', () => {
+    const normalized = normalizeTimeText(timeInput.value)
+    if (normalized !== null) timeInput.value = normalized
+    timeInput.setCustomValidity('')
+  })
 }
 
 function readLegacyJobs() {

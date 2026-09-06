@@ -6,9 +6,9 @@
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self'; connect-src 'self' https://*.supabase.co; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests">
   <title>취업 공채 대시보드</title>
-  <link rel="stylesheet" href="style.css?v=20260907-assessment-deadline">
+  <link rel="stylesheet" href="style.css?v=20260907-time-text">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.min.js" integrity="sha384-yiVMs0R/Jyz7OhoXa/DsEMUSBLjEhr/QJta2ONO+zB6I8/GmNg/7AUFrZmAJV7KV" crossorigin="anonymous"></script>
-  <script type="module" src="app.js?v=20260907-assessment-deadline"></script>
+  <script type="module" src="app.js?v=20260907-time-text"></script>
 </head>
 <body>
   <header class="page-header">
@@ -78,9 +78,10 @@
             <label for="dateInput">서류 제출 마감일시</label>
             <div class="split-row">
               <input type="date" id="dateInput" required>
-              <input type="time" id="deadlineTimeInput" aria-label="서류 제출 마감 시각">
+              <input type="text" id="deadlineTimeInput" inputmode="numeric" maxlength="5"
+                placeholder="18:00" autocomplete="off" aria-label="서류 제출 마감 시각">
             </div>
-            <small class="form-hint">마감 시각은 선택 입력입니다. 비워두면 날짜만 표시합니다.</small>
+            <small class="form-hint">시각은 24시간제로 적어 주세요. 예: 18:00, 09:30. 비워두면 날짜만 표시합니다.</small>
           </div>
           <div class="form-row">
             <label class="check-option" for="documentPreparedInput">
@@ -95,9 +96,10 @@
             <label for="assessmentDateInput">AI 역량검사 / 인적성 마감일시</label>
             <div class="split-row">
               <input type="date" id="assessmentDateInput">
-              <input type="time" id="assessmentTimeInput" aria-label="AI 역량검사 인적성 마감 시각">
+              <input type="text" id="assessmentTimeInput" inputmode="numeric" maxlength="5"
+                placeholder="18:00" autocomplete="off" aria-label="AI 역량검사 인적성 마감 시각">
             </div>
-            <small class="form-hint">해당 전형이 있는 기업만 입력하세요.</small>
+            <small class="form-hint">해당 전형이 있는 기업만 입력하세요. 시각은 24시간제입니다.</small>
           </div>
           <div class="form-row">
             <label class="check-option" for="assessmentDoneInput">

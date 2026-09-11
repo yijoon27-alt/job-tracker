@@ -2,7 +2,7 @@ import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js'
 
 const LEGACY_STORAGE_KEY = 'excelJobs'
 const LEGACY_BACKUP_PREFIX = 'excelJobsBackup:'
-const DB_COLUMNS = 'id, company, role, deadline, deadline_time, link, jd, preferred, cover_letter, document_prepared, assessment_deadline, assessment_time, assessment_done, doc_status, interview1_date, interview1_result, interview2_date, interview2_result, final_status, created_at, updated_at'
+const DB_COLUMNS = 'id, company, role, deadline, deadline_time, link, jd, preferred, cover_letter, document_prepared, assessment_deadline, assessment_time, assessment_done, assessment_result, doc_status, interview1_date, interview1_result, interview2_date, interview2_result, final_status, created_at, updated_at'
 
 const DOCUMENT_PREPARED_FLAG = {
   column: 'document_prepared',
@@ -20,6 +20,7 @@ const ASSESSMENT_DONE_FLAG = {
 }
 
 const DOC_STATUSES = ['대기', '합격', '탈락']
+const ASSESSMENT_RESULTS = ['대기', '합격', '탈락']
 const INTERVIEW_STATUSES = ['미대상', '대기', '합격', '탈락']
 const FINAL_STATUSES = ['진행중', '최종합격', '최종탈락']
 
@@ -54,6 +55,8 @@ const documentPreparedInput = document.querySelector('#documentPreparedInput')
 const assessmentDateInput = document.querySelector('#assessmentDateInput')
 const assessmentTimeInput = document.querySelector('#assessmentTimeInput')
 const assessmentDoneInput = document.querySelector('#assessmentDoneInput')
+const assessmentResultRow = document.querySelector('#assessmentResultRow')
+const assessmentResultInput = document.querySelector('#assessmentResultInput')
 const linkInput = document.querySelector('#linkInput')
 const jdInput = document.querySelector('#jdInput')
 const preferredInput = document.querySelector('#preferredInput')
@@ -79,8 +82,9 @@ const summaryPreparedMeta = document.querySelector('#summaryPreparedMeta')
 const summaryWaiting = document.querySelector('#summaryWaiting')
 const summaryDocPassRate = document.querySelector('#summaryDocPassRate')
 const summaryDocPassMeta = document.querySelector('#summaryDocPassMeta')
-const summaryInterview = document.querySelector('#summaryInterview')
-const summaryInterviewMeta = document.querySelector('#summaryInterviewMeta')
+const summaryOngoing = document.querySelector('#summaryOngoing')
+const summaryOngoingMeta = document.querySelector('#summaryOngoingMeta')
+const summaryCards = document.querySelectorAll('[data-summary-filter]')
 
 const timeInputs = [deadlineTimeInput, assessmentTimeInput]
 
@@ -95,6 +99,7 @@ let jobs = []
 let editingId = null
 let authViewVersion = 0
 let formReturnFocus = null
+let activeSummaryFilter = 'all'
 
 initialize()
 
@@ -181,6 +186,11 @@ async function applySession(session) {
   if (!session?.user) {
     currentUser = null
     jobs = []
+    activeSummaryFilter = 'all'
+    searchInput.value = ''
+    preparedFilter.value = '전체'
+    statusFilter.value = '전체'
+    updateSummaryFilterUi()
     resetForm()
     closeJobForm({ restoreFocus: false })
     renderJobs()
@@ -263,7 +273,10 @@ async function loadJobs() {
   if (error) {
     jobs = []
     renderJobs()
-    showAppMessage('데이터를 불러오지 못했습니다. Supabase SQL 설정과 인터넷 연결을 확인해 주세요.', true)
+    const schemaNeedsUpdate = String(error.message || '').includes('assessment_result')
+    showAppMessage(schemaNeedsUpdate
+      ? '최신 DB 업데이트가 필요합니다. Supabase SQL Editor에서 supabase-schema.sql 전체를 실행해 주세요.'
+      : '데이터를 불러오지 못했습니다. Supabase SQL 설정과 인터넷 연결을 확인해 주세요.', true)
     return false
   }
 
@@ -288,6 +301,7 @@ function fromDatabaseJob(row) {
     assessmentDate: row.assessment_deadline || '',
     assessmentTime: toTimeInputValue(row.assessment_time),
     assessmentDone: row.assessment_done === true,
+    assessmentResult: allowedValue(row.assessment_result, ASSESSMENT_RESULTS, '대기'),
     docStatus: row.doc_status,
     interview1Date: row.interview1_date || '',
     interview1Result: row.interview1_result,
@@ -300,6 +314,9 @@ function fromDatabaseJob(row) {
 }
 
 function getFormJobData() {
+  const assessmentDate = assessmentDateInput.value
+  const assessmentResult = allowedValue(assessmentResultInput.value, ASSESSMENT_RESULTS, '대기')
+
   return {
     company: companyInput.value.trim(),
     role: roleInput.value.trim(),
@@ -310,9 +327,12 @@ function getFormJobData() {
     preferred: preferredInput.value,
     cover_letter: coverLetterInput.value,
     document_prepared: documentPreparedInput.checked,
-    assessment_deadline: assessmentDateInput.value || null,
-    assessment_time: normalizeTimeText(assessmentTimeInput.value) || null,
-    assessment_done: assessmentDoneInput.checked,
+    assessment_deadline: assessmentDate || null,
+    assessment_time: assessmentDate ? normalizeTimeText(assessmentTimeInput.value) || null : null,
+    assessment_done: assessmentDate
+      ? assessmentDoneInput.checked || assessmentResult !== '대기'
+      : false,
+    assessment_result: assessmentDate ? assessmentResult : '대기',
     doc_status: docStatusInput.value,
     interview1_date: interview1Date.value || null,
     interview1_result: interview1Result.value,
@@ -410,8 +430,11 @@ function renderSummary() {
   const decidedDocuments = preparedJobs.filter((job) => ['합격', '탈락'].includes(job.docStatus))
   const passedDocuments = decidedDocuments.filter((job) => job.docStatus === '합격').length
   const documentPassRate = percentage(passedDocuments, decidedDocuments.length)
-  const interview1Count = preparedJobs.filter((job) => job.interview1Result === '대기').length
-  const interview2Count = preparedJobs.filter((job) => job.interview2Result === '대기').length
+  const ongoingCount = jobs.filter((job) => (
+    !isJobRejected(job)
+    && job.finalStatus !== '최종합격'
+    && isOngoingProcess(job)
+  )).length
 
   summaryTotal.textContent = `${totalCount}건`
   summaryPrepared.textContent = `${preparedCount} / ${totalCount}`
@@ -421,8 +444,8 @@ function renderSummary() {
   summaryDocPassMeta.textContent = decidedDocuments.length > 0
     ? `합격 ${passedDocuments} · 결과 ${decidedDocuments.length}`
     : '결과 0건'
-  summaryInterview.textContent = `${interview1Count + interview2Count}건`
-  summaryInterviewMeta.textContent = `1차 ${interview1Count} · 2차 ${interview2Count}`
+  summaryOngoing.textContent = `${ongoingCount}건`
+  summaryOngoingMeta.textContent = '서류 합격 이후 기준'
 }
 
 function percentage(value, total) {
@@ -438,15 +461,33 @@ function getFilteredJobs() {
     .filter((job) => {
       const searchText = `${job.company} ${job.role}`.toLowerCase()
       const matchesStatus = selectedStatus === '전체'
-        || (selectedStatus === '진행중' && !isJobRejected(job) && job.finalStatus !== '최종합격')
+        || (selectedStatus === '진행중'
+          && !isJobRejected(job)
+          && job.finalStatus !== '최종합격'
+          && isOngoingProcess(job))
         || (selectedStatus === '최종합격' && job.finalStatus === '최종합격')
         || (selectedStatus === '최종탈락' && isJobRejected(job))
       const matchesPrepared = selectedPrepared === '전체'
         || (selectedPrepared === '작성완료' && job.documentPrepared)
         || (selectedPrepared === '미작성' && !job.documentPrepared)
-      return searchText.includes(keyword) && matchesStatus && matchesPrepared
+      return searchText.includes(keyword)
+        && matchesStatus
+        && matchesPrepared
+        && matchesSummaryQuickFilter(job)
     })
     .sort(compareJobsByDeadline)
+}
+
+function matchesSummaryQuickFilter(job) {
+  if (activeSummaryFilter === 'prepared') return job.documentPrepared
+  if (activeSummaryFilter === 'document-waiting') return isDocumentResultWaiting(job)
+  if (activeSummaryFilter === 'document-passed') return job.docStatus === '합격'
+  if (activeSummaryFilter === 'ongoing') {
+    return !isJobRejected(job)
+      && job.finalStatus !== '최종합격'
+      && isOngoingProcess(job)
+  }
+  return true
 }
 
 function compareJobsByDeadline(firstJob, secondJob) {
@@ -457,6 +498,10 @@ function compareJobsByDeadline(firstJob, secondJob) {
   const firstPending = hasPendingWork(firstJob)
   const secondPending = hasPendingWork(secondJob)
   if (firstPending !== secondPending) return firstPending ? -1 : 1
+
+  const firstOngoing = isOngoingProcess(firstJob)
+  const secondOngoing = isOngoingProcess(secondJob)
+  if (firstOngoing !== secondOngoing) return firstOngoing ? -1 : 1
 
   const first = nextDeadline(firstJob)
   const second = nextDeadline(secondJob)
@@ -484,6 +529,15 @@ function hasPendingWork(job) {
   return isAssessmentPending(job)
 }
 
+// 서류 합격 또는 그 이후 전형에 진입한 공고인지.
+// 서류 결과 대기와 지원서 작성 단계는 진행 중 공고 집계에서 제외한다.
+function isOngoingProcess(job) {
+  return job.docStatus === '합격'
+    || job.assessmentResult === '합격'
+    || ['대기', '합격'].includes(job.interview1Result)
+    || ['대기', '합격'].includes(job.interview2Result)
+}
+
 // 정렬과 행 강조에 쓰는 '다음에 지켜야 할 마감'.
 // 서류를 다 썼고 역량검사만 남았다면 서류 마감이 아니라 역량검사 마감이 기준이 된다.
 function nextDeadline(job) {
@@ -497,6 +551,7 @@ function createTableRow(job) {
   const row = document.createElement('tr')
   const next = nextDeadline(job)
   row.classList.add(deadlineClassName(next.date, next.time))
+  if (isDocumentResultWaiting(job)) row.classList.add('is-document-waiting')
   if (isJobRejected(job)) row.classList.add('is-rejected')
   row.append(
     createDeadlineCell(job),
@@ -517,10 +572,17 @@ function createTableRow(job) {
   return row
 }
 
+function isDocumentResultWaiting(job) {
+  return job.documentPrepared
+    && job.docStatus === '대기'
+    && !isJobRejected(job)
+    && job.finalStatus !== '최종합격'
+}
+
 function createDeadlineCell(job) {
   const cell = document.createElement('td')
   cell.className = 'deadline-cell'
-  cell.dataset.label = '마감'
+  cell.dataset.label = '서류 마감'
 
   const dDay = document.createElement('strong')
   dDay.className = 'td-dday'
@@ -632,14 +694,22 @@ function createPreparedCell(job) {
 async function updateJobFlag(job, flag, checkbox) {
   if (!currentUser) return
   const nextValue = checkbox.checked
+  const updates = { [flag.column]: nextValue }
+  let selectedColumns = `${flag.column}, updated_at`
+
+  if (flag === ASSESSMENT_DONE_FLAG && !nextValue && job.assessmentResult !== '대기') {
+    updates.assessment_result = '대기'
+    selectedColumns = `${flag.column}, assessment_result, updated_at`
+  }
+
   checkbox.disabled = true
 
   const { data, error } = await supabaseClient
     .from('jobs')
-    .update({ [flag.column]: nextValue })
+    .update(updates)
     .eq('id', job.id)
     .eq('user_id', currentUser.id)
-    .select(`${flag.column}, updated_at`)
+    .select(selectedColumns)
     .single()
 
   if (error) {
@@ -650,6 +720,7 @@ async function updateJobFlag(job, flag, checkbox) {
   }
 
   job[flag.localKey] = data[flag.column] === true
+  if (data.assessment_result) job.assessmentResult = data.assessment_result
   job.updatedAt = data.updated_at
   renderJobs()
   showAppMessage(job[flag.localKey] ? flag.onText : flag.offText)
@@ -716,22 +787,191 @@ function createProcessCell(job) {
   currentLabel.className = `current-stage-label ${current.className}`
   currentLabel.textContent = current.label
 
+  const currentHeader = document.createElement('div')
+  currentHeader.className = 'current-stage-header'
+  currentHeader.appendChild(currentLabel)
+
+  const pendingResultConfig = getPendingResultConfig(job)
+  const quickResultSelect = createQuickResultSelect(job, pendingResultConfig)
+  if (quickResultSelect) currentHeader.appendChild(quickResultSelect)
+
   const timeline = document.createElement('div')
   timeline.className = 'stage-timeline'
   for (const stage of getDisplayStages(job)) {
-    timeline.appendChild(createTimelineStep(stage))
+    const opensResultPicker = pendingResultConfig?.timelineLabel === stage.label && quickResultSelect
+      ? () => openQuickResultPicker(quickResultSelect)
+      : null
+    timeline.appendChild(createTimelineStep(stage, opensResultPicker))
   }
 
-  cell.append(currentLabel, timeline)
+  cell.append(currentHeader, timeline)
   return cell
+}
+
+function createQuickResultSelect(job, resultConfig = getPendingResultConfig(job)) {
+  if (!resultConfig) return null
+
+  const select = document.createElement('select')
+  select.className = 'quick-result-select'
+  select.setAttribute('aria-label', `${job.company} ${resultConfig.label} 결과 입력`)
+
+  const placeholder = document.createElement('option')
+  placeholder.value = ''
+  placeholder.textContent = '결과 입력'
+
+  const passed = document.createElement('option')
+  passed.value = resultConfig.passedValue
+  passed.textContent = '✓ 합격'
+
+  const failed = document.createElement('option')
+  failed.value = resultConfig.failedValue
+  failed.textContent = '✕ 탈락'
+
+  select.append(placeholder, passed, failed)
+  select.addEventListener('change', () => {
+    if (!select.value) return
+    void updateJobResult(job, resultConfig, select.value, select)
+  })
+  return select
+}
+
+function getPendingResultConfig(job) {
+  if (isJobRejected(job) || job.finalStatus === '최종합격') return null
+
+  if (job.documentPrepared && job.docStatus === '대기') {
+    return {
+      label: '서류',
+      timelineLabel: '서류',
+      column: 'doc_status',
+      localKey: 'docStatus',
+      passedValue: '합격',
+      failedValue: '탈락'
+    }
+  }
+
+  if (job.docStatus === '합격' && job.assessmentDate) {
+    if (job.assessmentDone && job.assessmentResult === '대기') {
+      return {
+        label: 'AI 역검·인적성',
+        timelineLabel: 'AI/인적성',
+        column: 'assessment_result',
+        localKey: 'assessmentResult',
+        passedValue: '합격',
+        failedValue: '탈락',
+        marksAssessmentDone: true
+      }
+    }
+    if (job.assessmentResult !== '합격') return null
+  }
+
+  if (job.interview2Result === '대기') {
+    return {
+      label: '2차 면접',
+      timelineLabel: '2차',
+      column: 'interview2_result',
+      localKey: 'interview2Result',
+      passedValue: '합격',
+      failedValue: '탈락'
+    }
+  }
+
+  if (job.interview2Result === '합격' && job.finalStatus === '진행중') {
+    return {
+      label: '최종 전형',
+      timelineLabel: '최종',
+      column: 'final_status',
+      localKey: 'finalStatus',
+      passedValue: '최종합격',
+      failedValue: '최종탈락'
+    }
+  }
+
+  if (job.interview1Result === '대기') {
+    return {
+      label: '1차 면접',
+      timelineLabel: '1차',
+      column: 'interview1_result',
+      localKey: 'interview1Result',
+      passedValue: '합격',
+      failedValue: '탈락'
+    }
+  }
+
+  return null
+}
+
+function openQuickResultPicker(select) {
+  select.focus()
+  try {
+    if (typeof select.showPicker === 'function') select.showPicker()
+    else select.click()
+  } catch {
+    // 브라우저가 프로그래밍 방식의 선택 메뉴 열기를 지원하지 않으면 포커스만 이동합니다.
+  }
+}
+
+async function updateJobResult(job, resultConfig, selectedValue, select) {
+  if (!currentUser) return
+
+  if (selectedValue === resultConfig.failedValue) {
+    const confirmed = window.confirm(`${job.company}의 ${resultConfig.label} 결과를 탈락으로 저장하시겠습니까?`)
+    if (!confirmed) {
+      select.value = ''
+      return
+    }
+  }
+
+  const updates = { [resultConfig.column]: selectedValue }
+  const selectedColumns = [resultConfig.column]
+  if (resultConfig.marksAssessmentDone) {
+    updates.assessment_done = true
+    selectedColumns.push('assessment_done')
+  }
+  selectedColumns.push('updated_at')
+
+  select.disabled = true
+  showAppMessage(`${resultConfig.label} 결과를 저장하는 중입니다.`)
+
+  const { data, error } = await supabaseClient
+    .from('jobs')
+    .update(updates)
+    .eq('id', job.id)
+    .eq('user_id', currentUser.id)
+    .select(selectedColumns.join(', '))
+    .single()
+
+  if (error) {
+    select.value = ''
+    select.disabled = false
+    showAppMessage(`${resultConfig.label} 결과를 저장하지 못했습니다. 인터넷 연결과 DB 설정을 확인해 주세요.`, true)
+    return
+  }
+
+  job[resultConfig.localKey] = data[resultConfig.column]
+  if (resultConfig.marksAssessmentDone) job.assessmentDone = data.assessment_done === true
+  job.updatedAt = data.updated_at
+  renderJobs()
+  showAppMessage(`${resultConfig.label} 결과를 ${selectedValue}으로 저장했습니다.`)
 }
 
 function getCurrentStage(job) {
   if (job.docStatus === '탈락') return { label: '서류 탈락 · 전형 종료', className: 'is-failure' }
+  if (job.assessmentDate && job.assessmentResult === '탈락') {
+    return { label: 'AI 역검·인적성 탈락 · 전형 종료', className: 'is-failure' }
+  }
   if (job.interview1Result === '탈락') return { label: '1차 면접 탈락 · 전형 종료', className: 'is-failure' }
   if (job.interview2Result === '탈락') return { label: '2차 면접 탈락 · 전형 종료', className: 'is-failure' }
   if (job.finalStatus === '최종탈락') return { label: '최종 전형 탈락', className: 'is-failure' }
   if (job.finalStatus === '최종합격') return { label: '최종 합격', className: 'is-success' }
+  if (job.docStatus === '합격' && job.assessmentDate && job.assessmentResult !== '합격') {
+    if (job.assessmentDone) {
+      return { label: 'AI 역검·인적성 결과 대기', className: 'is-waiting' }
+    }
+    if (isDeadlinePassed(job.assessmentDate, job.assessmentTime)) {
+      return { label: 'AI 역검·인적성 마감 · 미응시', className: 'is-failure' }
+    }
+    return { label: stageWithDate('AI 역검·인적성 응시 대기', job.assessmentDate), className: 'is-progress' }
+  }
   if (job.interview2Result === '대기') {
     return { label: stageWithDate('2차 면접 진행', job.interview2Date), className: 'is-progress' }
   }
@@ -750,26 +990,47 @@ function stageWithDate(label, dateValue) {
 }
 
 function getDisplayStages(job) {
-  const firstFailureIndex = [
-    job.docStatus,
-    job.interview1Result,
-    job.interview2Result,
-    job.finalStatus
-  ].findIndex((status) => status === '탈락' || status === '최종탈락')
-
   const stages = [
-    { label: '서류', status: job.docStatus },
+    { label: '서류', status: job.docStatus }
+  ]
+
+  if (job.assessmentDate) {
+    stages.push({
+      label: 'AI/인적성',
+      status: assessmentStageStatus(job),
+      date: job.assessmentDate,
+      isAssessment: true
+    })
+  }
+
+  stages.push(
     { label: '1차', status: normalizeInterviewStatus(job.interview1Result), date: job.interview1Date },
     { label: '2차', status: normalizeInterviewStatus(job.interview2Result), date: job.interview2Date },
     { label: '최종', status: normalizeFinalStatus(job) }
-  ]
+  )
 
-  return stages.map((stage, index) => {
-    if (firstFailureIndex >= 0 && index > firstFailureIndex) {
+  let followingStagesHidden = false
+  return stages.map((stage) => {
+    if (followingStagesHidden) {
       return { ...stage, status: '—', date: '' }
+    }
+
+    if (stage.status === '탈락' || stage.status === '최종탈락') {
+      followingStagesHidden = true
+    } else if (stage.isAssessment && stage.status !== '합격') {
+      followingStagesHidden = true
     }
     return stage
   })
+}
+
+function assessmentStageStatus(job) {
+  if (job.assessmentResult === '합격' || job.assessmentResult === '탈락') {
+    return job.assessmentResult
+  }
+  if (job.assessmentDone) return '결과대기'
+  if (isDeadlinePassed(job.assessmentDate, job.assessmentTime)) return '마감'
+  return '미응시'
 }
 
 function normalizeInterviewStatus(status) {
@@ -782,9 +1043,15 @@ function normalizeFinalStatus(job) {
   return job.interview2Result === '합격' ? '대기' : '—'
 }
 
-function createTimelineStep(stage) {
-  const step = document.createElement('span')
-  step.className = `timeline-step ${statusClassName(stage.status)}`
+function createTimelineStep(stage, onResultClick = null) {
+  const step = document.createElement(onResultClick ? 'button' : 'span')
+  step.className = `timeline-step ${statusClassName(stage.status)}${onResultClick ? ' is-actionable' : ''}`
+  if (onResultClick) {
+    step.type = 'button'
+    step.title = `${stage.label} 결과 입력`
+    step.setAttribute('aria-label', `${stage.label} 결과 입력 메뉴 열기`)
+    step.addEventListener('click', onResultClick)
+  }
 
   const label = document.createElement('b')
   label.textContent = stage.label
@@ -804,8 +1071,8 @@ function createTimelineStep(stage) {
 }
 
 function statusClassName(status) {
-  if (status === '합격' || status === '최종합격') return 'status-success'
-  if (status === '탈락' || status === '최종탈락') return 'status-failure'
+  if (status === '합격' || status === '최종합격' || status === '완료') return 'status-success'
+  if (status === '탈락' || status === '최종탈락' || status === '마감') return 'status-failure'
   if (status === '진행중') return 'status-progress'
   if (status === '미대상' || status === '—') return 'status-na'
   return 'status-waiting'
@@ -813,6 +1080,7 @@ function statusClassName(status) {
 
 function isJobRejected(job) {
   return job.docStatus === '탈락'
+    || (job.assessmentDate && job.assessmentResult === '탈락')
     || job.interview1Result === '탈락'
     || job.interview2Result === '탈락'
     || job.finalStatus === '최종탈락'
@@ -905,6 +1173,8 @@ function startEdit(id) {
   assessmentDateInput.value = target.assessmentDate
   assessmentTimeInput.value = target.assessmentTime
   assessmentDoneInput.checked = target.assessmentDone
+  assessmentResultInput.value = target.assessmentResult
+  syncAssessmentResultField()
   linkInput.value = target.link
   jdInput.value = target.jd
   preferredInput.value = target.preferred
@@ -950,6 +1220,7 @@ async function deleteJob(id) {
 function resetForm() {
   editingId = null
   jobForm.reset()
+  syncAssessmentResultField()
   linkInput.setCustomValidity('')
   clearTimeValidity()
   submitButton.textContent = '등록하기'
@@ -1015,13 +1286,45 @@ document.addEventListener('keydown', (event) => {
 })
 
 searchInput.addEventListener('input', renderJobs)
-preparedFilter.addEventListener('change', renderJobs)
-statusFilter.addEventListener('change', renderJobs)
+preparedFilter.addEventListener('change', () => {
+  clearSummaryQuickFilter()
+  renderJobs()
+})
+statusFilter.addEventListener('change', () => {
+  clearSummaryQuickFilter()
+  renderJobs()
+})
+for (const card of summaryCards) {
+  card.addEventListener('click', () => {
+    const selectedFilter = card.dataset.summaryFilter
+    activeSummaryFilter = activeSummaryFilter === selectedFilter && selectedFilter !== 'all'
+      ? 'all'
+      : selectedFilter
+    searchInput.value = ''
+    preparedFilter.value = '전체'
+    statusFilter.value = '전체'
+    updateSummaryFilterUi()
+    renderJobs()
+  })
+}
 openFormButton.addEventListener('click', openNewJobForm)
 closeFormButton.addEventListener('click', cancelJobForm)
 formBackdrop.addEventListener('click', cancelJobForm)
 cancelEditButton.addEventListener('click', cancelJobForm)
 linkInput.addEventListener('input', () => linkInput.setCustomValidity(''))
+
+function clearSummaryQuickFilter() {
+  activeSummaryFilter = ''
+  updateSummaryFilterUi()
+}
+
+function updateSummaryFilterUi() {
+  for (const card of summaryCards) {
+    const isActive = card.dataset.summaryFilter === activeSummaryFilter
+    card.classList.toggle('is-active', isActive)
+    card.setAttribute('aria-pressed', String(isActive))
+  }
+}
 
 // 시각은 브라우저 시간 위젯 대신 직접 입력받는다.
 // 오전·오후 칸을 키보드로만 바꿀 수 있는 위젯 때문에 값이 만들어지지 않는 문제를 피한다.
@@ -1069,6 +1372,32 @@ for (const timeInput of timeInputs) {
     timeInput.setCustomValidity('')
   })
 }
+
+function syncAssessmentResultField({ clearWhenMissing = false } = {}) {
+  const hasAssessment = Boolean(assessmentDateInput.value)
+  assessmentResultRow.hidden = !hasAssessment
+  assessmentResultInput.disabled = !hasAssessment
+
+  if (!hasAssessment && clearWhenMissing) {
+    assessmentTimeInput.value = ''
+    assessmentDoneInput.checked = false
+    assessmentResultInput.value = '대기'
+  }
+}
+
+assessmentDateInput.addEventListener('input', () => {
+  syncAssessmentResultField({ clearWhenMissing: true })
+})
+
+assessmentDoneInput.addEventListener('change', () => {
+  if (!assessmentDoneInput.checked) assessmentResultInput.value = '대기'
+})
+
+assessmentResultInput.addEventListener('change', () => {
+  if (assessmentResultInput.value !== '대기') assessmentDoneInput.checked = true
+})
+
+syncAssessmentResultField()
 
 function readLegacyJobs() {
   let raw
@@ -1214,6 +1543,7 @@ exportButton.addEventListener('click', () => {
     assessmentDate: job.assessmentDate,
     assessmentTime: job.assessmentTime,
     assessmentDone: job.assessmentDone,
+    assessmentResult: job.assessmentResult,
     docStatus: job.docStatus,
     interview1Date: job.interview1Date,
     interview1Result: job.interview1Result,

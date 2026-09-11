@@ -6,9 +6,9 @@
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self'; connect-src 'self' https://*.supabase.co; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests">
   <title>취업 공채 대시보드</title>
-  <link rel="stylesheet" href="style.css?v=20260907-time-text">
+  <link rel="stylesheet" href="style.css?v=20260911-clickable-stages">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.min.js" integrity="sha384-yiVMs0R/Jyz7OhoXa/DsEMUSBLjEhr/QJta2ONO+zB6I8/GmNg/7AUFrZmAJV7KV" crossorigin="anonymous"></script>
-  <script type="module" src="app.js?v=20260907-time-text"></script>
+  <script type="module" src="app.js?v=20260911-clickable-stages"></script>
 </head>
 <body>
   <header class="page-header">
@@ -110,6 +110,15 @@
               </span>
             </label>
           </div>
+          <div class="form-row" id="assessmentResultRow" hidden>
+            <label for="assessmentResultInput">AI 역량검사 / 인적성 결과</label>
+            <select id="assessmentResultInput">
+              <option value="대기">⏳ 결과 대기</option>
+              <option value="합격">🟢 합격</option>
+              <option value="탈락">🔴 탈락</option>
+            </select>
+            <small class="form-hint">합격으로 저장해야 다음 단계가 1차 면접 준비로 넘어갑니다.</small>
+          </div>
           <div class="form-row">
             <label for="linkInput">채용 사이트 링크</label>
             <input type="url" id="linkInput" maxlength="2048" placeholder="https://careers.company.com" autocomplete="off">
@@ -194,31 +203,31 @@
         </div>
         <p id="countText">총 0개 공고 관리 중</p>
         <section class="summary-grid" aria-label="지원 현황 요약" aria-live="polite">
-          <article class="summary-card summary-total">
+          <button type="button" class="summary-card summary-total is-active" data-summary-filter="all" aria-pressed="true">
             <span class="summary-label">전체 공고</span>
             <strong id="summaryTotal">0건</strong>
             <small>현재 관리 중</small>
-          </article>
-          <article class="summary-card summary-prepared">
+          </button>
+          <button type="button" class="summary-card summary-prepared" data-summary-filter="prepared" aria-pressed="false">
             <span class="summary-label">서류 작성</span>
             <strong id="summaryPrepared">0 / 0</strong>
             <small id="summaryPreparedMeta">0% 완료</small>
-          </article>
-          <article class="summary-card summary-waiting">
+          </button>
+          <button type="button" class="summary-card summary-waiting" data-summary-filter="document-waiting" aria-pressed="false">
             <span class="summary-label">서류 결과 대기</span>
             <strong id="summaryWaiting">0건</strong>
             <small>작성 완료 건 기준</small>
-          </article>
-          <article class="summary-card summary-passed">
+          </button>
+          <button type="button" class="summary-card summary-passed" data-summary-filter="document-passed" aria-pressed="false">
             <span class="summary-label">서류 합격률</span>
             <strong id="summaryDocPassRate">0%</strong>
             <small id="summaryDocPassMeta">결과 0건</small>
-          </article>
-          <article class="summary-card summary-interview">
-            <span class="summary-label">면접 진행</span>
-            <strong id="summaryInterview">0건</strong>
-            <small id="summaryInterviewMeta">1차 0 · 2차 0</small>
-          </article>
+          </button>
+          <button type="button" class="summary-card summary-ongoing" data-summary-filter="ongoing" aria-pressed="false">
+            <span class="summary-label">진행 중 공고</span>
+            <strong id="summaryOngoing">0건</strong>
+            <small id="summaryOngoingMeta">서류 합격 이후 기준</small>
+          </button>
         </section>
         <div class="table-wrapper">
           <table class="excel-table">
@@ -232,7 +241,7 @@
             </colgroup>
             <thead>
               <tr>
-                <th>마감</th>
+                <th>서류 마감</th>
                 <th>기업 / 지원 직무</th>
                 <th>서류 작성</th>
                 <th>지원 자료</th>

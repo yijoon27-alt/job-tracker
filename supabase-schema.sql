@@ -27,6 +27,7 @@ create table if not exists public.jobs (
   assessment_deadline date,
   assessment_time time,
   assessment_done boolean not null default false,
+  assessment_result text not null default '대기' check (assessment_result in ('대기', '합격', '탈락')),
   doc_status text not null default '대기' check (doc_status in ('대기', '합격', '탈락')),
   interview1_date date,
   interview1_result text not null default '미대상' check (interview1_result in ('미대상', '대기', '합격', '탈락')),
@@ -72,6 +73,34 @@ alter table public.jobs
   add column if not exists assessment_time time,
   add column if not exists assessment_done boolean not null default false;
 
+-- 기존 설치에는 역량검사 결과 필드를 추가합니다.
+-- 이미 이후 전형으로 진행한 기록은 역량검사 합격으로 보정하고, 나머지는 결과 대기로 둡니다.
+do $$
+begin
+  if not exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'jobs'
+      and column_name = 'assessment_result'
+  ) then
+    alter table public.jobs
+      add column assessment_result text not null default '대기'
+      check (assessment_result in ('대기', '합격', '탈락'));
+
+    update public.jobs
+    set assessment_result = '합격'
+    where assessment_deadline is not null
+      and assessment_done = true
+      and (
+        interview1_result <> '미대상'
+        or interview2_result <> '미대상'
+        or final_status <> '진행중'
+      );
+  end if;
+end;
+$$;
+
 create index if not exists jobs_user_id_idx on public.jobs (user_id);
 
 create or replace function public.set_job_updated_at()
@@ -98,13 +127,13 @@ revoke all on table public.jobs from authenticated;
 grant select, delete on table public.jobs to authenticated;
 grant insert (
   user_id, company, role, deadline, deadline_time, link, jd, preferred, cover_letter,
-  document_prepared, assessment_deadline, assessment_time, assessment_done,
+  document_prepared, assessment_deadline, assessment_time, assessment_done, assessment_result,
   doc_status, interview1_date, interview1_result, interview2_date,
   interview2_result, final_status
 ) on table public.jobs to authenticated;
 grant update (
   company, role, deadline, deadline_time, link, jd, preferred, cover_letter,
-  document_prepared, assessment_deadline, assessment_time, assessment_done,
+  document_prepared, assessment_deadline, assessment_time, assessment_done, assessment_result,
   doc_status, interview1_date, interview1_result, interview2_date,
   interview2_result, final_status
 ) on table public.jobs to authenticated;

@@ -471,10 +471,31 @@ button {
   padding: 14px;
   display: grid;
   gap: 5px;
+  color: inherit;
   background-color: #f8fafc;
   border: 1px solid #e2e8f0;
   border-top: 3px solid #94a3b8;
   border-radius: 10px;
+  appearance: none;
+  text-align: left;
+  font-weight: 400;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+}
+
+.summary-card:hover {
+  background-color: #fff;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+}
+
+.summary-card:focus-visible {
+  outline: 3px solid rgba(37, 99, 235, 0.25);
+  outline-offset: 2px;
+}
+
+.summary-card.is-active {
+  background-color: #fff;
+  box-shadow: 0 0 0 2px #2563eb, 0 4px 12px rgba(37, 99, 235, 0.12);
 }
 
 .summary-card .summary-label {
@@ -498,12 +519,12 @@ button {
 .summary-prepared { border-top-color: #16a34a; }
 .summary-waiting { border-top-color: #f59e0b; }
 .summary-passed { border-top-color: #3b82f6; }
-.summary-interview { border-top-color: #8b5cf6; }
+.summary-ongoing { border-top-color: #8b5cf6; }
 
 .summary-prepared strong { color: #15803d; }
 .summary-waiting strong { color: #b45309; }
 .summary-passed strong { color: #1d4ed8; }
-.summary-interview strong { color: #7c3aed; }
+.summary-ongoing strong { color: #7c3aed; }
 
 .deadline-column { width: 13%; }
 .job-column { width: 22%; }
@@ -569,6 +590,10 @@ button {
 
 .excel-table tbody tr.deadline-closed:not(.is-rejected) {
   background-color: #fafafa;
+}
+
+.excel-table tbody tr.is-document-waiting:not(.is-rejected) .process-cell {
+  box-shadow: inset 3px 0 rgba(245, 158, 11, 0.6);
 }
 
 .excel-table tbody tr.is-rejected {
@@ -664,9 +689,9 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: #b45309;
-  background-color: #fffbeb;
-  border: 1px solid #fde68a;
+  color: #64748b;
+  background-color: #f8fafc;
+  border: 1px solid #cbd5e1;
   border-radius: 999px;
   font-size: 10px;
   font-weight: 700;
@@ -732,6 +757,12 @@ button {
   font-size: 9px;
 }
 
+.assessment-toggle:not(.is-complete) {
+  color: #b45309;
+  background-color: #fffbeb;
+  border-color: #fde68a;
+}
+
 .assessment-toggle input {
   width: 13px;
   height: 13px;
@@ -764,12 +795,35 @@ button {
   border: 1px dashed #cbd5e1;
 }
 
+.current-stage-header {
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .current-stage-label {
   display: block;
-  margin-bottom: 8px;
+  flex: 1 1 150px;
   color: #334155;
   font-size: 12px;
   line-height: 1.4;
+}
+
+.quick-result-select {
+  width: auto;
+  min-width: 86px;
+  padding: 5px 24px 5px 8px;
+  flex: none;
+  color: #1d4ed8;
+  background-color: #eff6ff;
+  border-color: #bfdbfe;
+  border-radius: 6px;
+  font-size: 9px;
+  font-weight: 700;
+  cursor: pointer;
 }
 
 .current-stage-label.is-failure { color: #dc2626; }
@@ -796,6 +850,28 @@ button {
   border-radius: 6px;
   font-size: 9px;
   white-space: nowrap;
+}
+
+.timeline-step.is-actionable {
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.timeline-step.is-actionable::after {
+  content: "▾";
+  margin-left: 1px;
+  font-size: 8px;
+}
+
+.timeline-step.is-actionable:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(15, 23, 42, 0.14);
+}
+
+.timeline-step.is-actionable:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
 }
 
 .timeline-step b {

@@ -509,9 +509,11 @@ function compareJobsByDeadline(firstJob, secondJob) {
   const secondClosed = isDeadlinePassed(second.date, second.time)
   if (firstClosed !== secondClosed) return firstClosed ? 1 : -1
 
+  const firstTimestamp = deadlineTimestamp(first.date, first.time)
+  const secondTimestamp = deadlineTimestamp(second.date, second.time)
   const deadlineOrder = firstClosed
-    ? second.date.localeCompare(first.date)
-    : first.date.localeCompare(second.date)
+    ? secondTimestamp - firstTimestamp
+    : firstTimestamp - secondTimestamp
   if (deadlineOrder !== 0) return deadlineOrder
 
   return String(firstJob.createdAt || '').localeCompare(String(secondJob.createdAt || ''))
@@ -1135,6 +1137,10 @@ function deadlineMoment(dateString, timeString) {
   const [hours, minutes] = time ? time.split(':').map(Number) : [23, 59]
   // 시각 미입력이면 그날 끝(23:59:59)까지 유효하다고 본다
   return new Date(year, month - 1, day, hours, minutes, time ? 0 : 59, 0)
+}
+
+function deadlineTimestamp(dateString, timeString) {
+  return deadlineMoment(dateString, timeString)?.getTime() ?? Number.POSITIVE_INFINITY
 }
 
 function isDeadlinePassed(dateString, timeString) {

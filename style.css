@@ -467,6 +467,7 @@ button {
 }
 
 .summary-card {
+  --summary-accent: #64748b;
   min-width: 0;
   padding: 14px;
   display: grid;
@@ -489,13 +490,13 @@ button {
 }
 
 .summary-card:focus-visible {
-  outline: 3px solid rgba(37, 99, 235, 0.25);
+  outline: 3px solid var(--summary-accent);
   outline-offset: 2px;
 }
 
 .summary-card.is-active {
   background-color: #fff;
-  box-shadow: 0 0 0 2px #2563eb, 0 4px 12px rgba(37, 99, 235, 0.12);
+  box-shadow: 0 0 0 2px var(--summary-accent), 0 4px 12px rgba(15, 23, 42, 0.12);
 }
 
 .summary-card .summary-label {
@@ -515,11 +516,11 @@ button {
   font-size: 10px;
 }
 
-.summary-total { border-top-color: #64748b; }
-.summary-prepared { border-top-color: #16a34a; }
-.summary-waiting { border-top-color: #f59e0b; }
-.summary-passed { border-top-color: #3b82f6; }
-.summary-ongoing { border-top-color: #8b5cf6; }
+.summary-total { --summary-accent: #64748b; border-top-color: var(--summary-accent); }
+.summary-prepared { --summary-accent: #16a34a; border-top-color: var(--summary-accent); }
+.summary-waiting { --summary-accent: #f59e0b; border-top-color: var(--summary-accent); }
+.summary-passed { --summary-accent: #3b82f6; border-top-color: var(--summary-accent); }
+.summary-ongoing { --summary-accent: #8b5cf6; border-top-color: var(--summary-accent); }
 
 .summary-prepared strong { color: #15803d; }
 .summary-waiting strong { color: #b45309; }

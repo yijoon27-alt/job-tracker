@@ -27,7 +27,7 @@ create table if not exists public.jobs (
   assessment_deadline date,
   assessment_time time,
   assessment_done boolean not null default false,
-  assessment_result text not null default '대기' check (assessment_result in ('대기', '합격', '탈락')),
+  assessment_result text not null default '미대상' check (assessment_result in ('미대상', '대기', '합격', '탈락')),
   doc_status text not null default '대기' check (doc_status in ('대기', '합격', '탈락')),
   interview1_date date,
   interview1_result text not null default '미대상' check (interview1_result in ('미대상', '대기', '합격', '탈락')),
@@ -98,6 +98,43 @@ begin
         or final_status <> '진행중'
       );
   end if;
+end;
+$$;
+
+-- 역량검사 결과를 1차·2차 면접과 같은 4단계로 확장합니다.
+-- 인적성 전형이 있다는 사실을 마감일 입력 여부와 분리하기 위해 '미대상'을 허용합니다.
+-- 제약조건 이름은 설치 경로에 따라 다를 수 있어 pg_constraint에서 찾아 교체합니다.
+do $$
+declare
+  existing_constraint text;
+begin
+  select con.conname into existing_constraint
+  from pg_constraint con
+  join pg_class rel on rel.oid = con.conrelid
+  join pg_namespace nsp on nsp.oid = rel.relnamespace
+  where nsp.nspname = 'public'
+    and rel.relname = 'jobs'
+    and con.contype = 'c'
+    and pg_get_constraintdef(con.oid) like '%assessment_result%'
+  limit 1;
+
+  if existing_constraint is not null then
+    execute format('alter table public.jobs drop constraint %I', existing_constraint);
+  end if;
+
+  alter table public.jobs
+    add constraint jobs_assessment_result_allowed
+    check (assessment_result in ('미대상', '대기', '합격', '탈락'));
+
+  alter table public.jobs
+    alter column assessment_result set default '미대상';
+
+  -- 인적성 전형 자체가 없던 기록만 정리합니다. 결과가 남아 있는 기록은 건드리지 않습니다.
+  update public.jobs
+  set assessment_result = '미대상'
+  where assessment_result = '대기'
+    and assessment_deadline is null
+    and assessment_done = false;
 end;
 $$;
 

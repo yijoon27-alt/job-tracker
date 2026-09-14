@@ -917,6 +917,14 @@ button {
   border-color: #e2e8f0;
 }
 
+/* 아직 정하지 않은 단계라도 결과를 넣을 수 있으면 눌리는 칩임을 알린다 */
+.timeline-step.is-actionable.status-na {
+  color: #475569;
+  background-color: #ffffff;
+  border-color: #cbd5e1;
+  border-style: dashed;
+}
+
 .table-actions {
   text-align: center;
 }

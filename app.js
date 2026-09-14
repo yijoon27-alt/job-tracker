@@ -20,7 +20,7 @@ const ASSESSMENT_DONE_FLAG = {
 }
 
 const DOC_STATUSES = ['대기', '합격', '탈락']
-const ASSESSMENT_RESULTS = ['대기', '합격', '탈락']
+const ASSESSMENT_RESULTS = ['미대상', '대기', '합격', '탈락']
 const INTERVIEW_STATUSES = ['미대상', '대기', '합격', '탈락']
 const FINAL_STATUSES = ['진행중', '최종합격', '최종탈락']
 
@@ -55,7 +55,6 @@ const documentPreparedInput = document.querySelector('#documentPreparedInput')
 const assessmentDateInput = document.querySelector('#assessmentDateInput')
 const assessmentTimeInput = document.querySelector('#assessmentTimeInput')
 const assessmentDoneInput = document.querySelector('#assessmentDoneInput')
-const assessmentResultRow = document.querySelector('#assessmentResultRow')
 const assessmentResultInput = document.querySelector('#assessmentResultInput')
 const linkInput = document.querySelector('#linkInput')
 const jdInput = document.querySelector('#jdInput')
@@ -301,7 +300,7 @@ function fromDatabaseJob(row) {
     assessmentDate: row.assessment_deadline || '',
     assessmentTime: toTimeInputValue(row.assessment_time),
     assessmentDone: row.assessment_done === true,
-    assessmentResult: allowedValue(row.assessment_result, ASSESSMENT_RESULTS, '대기'),
+    assessmentResult: allowedValue(row.assessment_result, ASSESSMENT_RESULTS, '미대상'),
     docStatus: row.doc_status,
     interview1Date: row.interview1_date || '',
     interview1Result: row.interview1_result,
@@ -315,7 +314,12 @@ function fromDatabaseJob(row) {
 
 function getFormJobData() {
   const assessmentDate = assessmentDateInput.value
-  const assessmentResult = allowedValue(assessmentResultInput.value, ASSESSMENT_RESULTS, '대기')
+  const selectedResult = allowedValue(assessmentResultInput.value, ASSESSMENT_RESULTS, '미대상')
+  // 인적성 전형 유무는 마감일이 아니라 결과값으로도 선언할 수 있다.
+  const hasAssessment = Boolean(assessmentDate) || selectedResult !== '미대상'
+  const assessmentResult = hasAssessment
+    ? (selectedResult === '미대상' ? '대기' : selectedResult)
+    : '미대상'
 
   return {
     company: companyInput.value.trim(),
@@ -329,10 +333,10 @@ function getFormJobData() {
     document_prepared: documentPreparedInput.checked,
     assessment_deadline: assessmentDate || null,
     assessment_time: assessmentDate ? normalizeTimeText(assessmentTimeInput.value) || null : null,
-    assessment_done: assessmentDate
-      ? assessmentDoneInput.checked || assessmentResult !== '대기'
+    assessment_done: hasAssessment
+      ? assessmentDoneInput.checked || ['합격', '탈락'].includes(assessmentResult)
       : false,
-    assessment_result: assessmentDate ? assessmentResult : '대기',
+    assessment_result: assessmentResult,
     doc_status: docStatusInput.value,
     interview1_date: interview1Date.value || null,
     interview1_result: interview1Result.value,
@@ -386,7 +390,10 @@ jobForm.addEventListener('submit', async (event) => {
 
   setJobFormBusy(false)
   if (result.error) {
-    showAppMessage('저장하지 못했습니다. 입력 내용과 인터넷 연결을 확인해 주세요.', true)
+    const schemaNeedsUpdate = String(result.error.message || '').includes('assessment_result')
+    showAppMessage(schemaNeedsUpdate
+      ? '최신 DB 업데이트가 필요합니다. Supabase SQL Editor에서 supabase-schema.sql 전체를 실행해 주세요.'
+      : '저장하지 못했습니다. 입력 내용과 인터넷 연결을 확인해 주세요.', true)
     return
   }
 
@@ -517,6 +524,16 @@ function compareJobsByDeadline(firstJob, secondJob) {
   if (deadlineOrder !== 0) return deadlineOrder
 
   return String(firstJob.createdAt || '').localeCompare(String(secondJob.createdAt || ''))
+}
+
+// 인적성 전형이 있는 공고인지. 마감일을 안 넣어도 결과만 기록하면 전형으로 인정한다.
+function hasAssessmentStage(job) {
+  return Boolean(job.assessmentDate) || job.assessmentResult !== '미대상'
+}
+
+// 인적성을 통과했거나 애초에 없는 공고인지. 1차 면접으로 넘어갈 수 있는지의 기준.
+function assessmentGatePassed(job) {
+  return !hasAssessmentStage(job) || job.assessmentResult === '합격'
 }
 
 function isAssessmentPending(job) {
@@ -699,7 +716,7 @@ async function updateJobFlag(job, flag, checkbox) {
   const updates = { [flag.column]: nextValue }
   let selectedColumns = `${flag.column}, updated_at`
 
-  if (flag === ASSESSMENT_DONE_FLAG && !nextValue && job.assessmentResult !== '대기') {
+  if (flag === ASSESSMENT_DONE_FLAG && !nextValue && ['합격', '탈락'].includes(job.assessmentResult)) {
     updates.assessment_result = '대기'
     selectedColumns = `${flag.column}, assessment_result, updated_at`
   }
@@ -837,67 +854,71 @@ function createQuickResultSelect(job, resultConfig = getPendingResultConfig(job)
   return select
 }
 
+const RESULT_CONFIGS = {
+  document: {
+    label: '서류',
+    timelineLabel: '서류',
+    column: 'doc_status',
+    localKey: 'docStatus',
+    passedValue: '합격',
+    failedValue: '탈락'
+  },
+  assessment: {
+    label: 'AI 역검·인적성',
+    timelineLabel: 'AI/인적성',
+    column: 'assessment_result',
+    localKey: 'assessmentResult',
+    passedValue: '합격',
+    failedValue: '탈락',
+    marksAssessmentDone: true
+  },
+  interview1: {
+    label: '1차 면접',
+    timelineLabel: '1차',
+    column: 'interview1_result',
+    localKey: 'interview1Result',
+    passedValue: '합격',
+    failedValue: '탈락'
+  },
+  interview2: {
+    label: '2차 면접',
+    timelineLabel: '2차',
+    column: 'interview2_result',
+    localKey: 'interview2Result',
+    passedValue: '합격',
+    failedValue: '탈락'
+  },
+  final: {
+    label: '최종 전형',
+    timelineLabel: '최종',
+    column: 'final_status',
+    localKey: 'finalStatus',
+    passedValue: '최종합격',
+    failedValue: '최종탈락'
+  }
+}
+
+// 지금 현황판에서 바로 합·불을 넣을 수 있는 단계.
+// 전형 순서(서류 → 인적성 → 1차 → 2차 → 최종)를 그대로 따라가며,
+// 명시적으로 '대기'인 단계를 먼저 찾고 없으면 아직 정하지 않은 '미대상' 단계를 제안한다.
 function getPendingResultConfig(job) {
   if (isJobRejected(job) || job.finalStatus === '최종합격') return null
 
-  if (job.documentPrepared && job.docStatus === '대기') {
-    return {
-      label: '서류',
-      timelineLabel: '서류',
-      column: 'doc_status',
-      localKey: 'docStatus',
-      passedValue: '합격',
-      failedValue: '탈락'
-    }
+  if (job.docStatus === '대기') {
+    return job.documentPrepared ? RESULT_CONFIGS.document : null
   }
+  if (job.docStatus !== '합격') return null
 
-  if (job.docStatus === '합격' && job.assessmentDate) {
-    if (job.assessmentDone && job.assessmentResult === '대기') {
-      return {
-        label: 'AI 역검·인적성',
-        timelineLabel: 'AI/인적성',
-        column: 'assessment_result',
-        localKey: 'assessmentResult',
-        passedValue: '합격',
-        failedValue: '탈락',
-        marksAssessmentDone: true
-      }
-    }
-    if (job.assessmentResult !== '합격') return null
-  }
+  if (hasAssessmentStage(job) && job.assessmentResult === '대기') return RESULT_CONFIGS.assessment
+  if (!assessmentGatePassed(job)) return null
 
-  if (job.interview2Result === '대기') {
-    return {
-      label: '2차 면접',
-      timelineLabel: '2차',
-      column: 'interview2_result',
-      localKey: 'interview2Result',
-      passedValue: '합격',
-      failedValue: '탈락'
-    }
-  }
+  if (job.interview1Result === '대기') return RESULT_CONFIGS.interview1
+  if (job.interview2Result === '대기') return RESULT_CONFIGS.interview2
+  if (job.interview2Result === '합격' && job.finalStatus === '진행중') return RESULT_CONFIGS.final
 
-  if (job.interview2Result === '합격' && job.finalStatus === '진행중') {
-    return {
-      label: '최종 전형',
-      timelineLabel: '최종',
-      column: 'final_status',
-      localKey: 'finalStatus',
-      passedValue: '최종합격',
-      failedValue: '최종탈락'
-    }
-  }
-
-  if (job.interview1Result === '대기') {
-    return {
-      label: '1차 면접',
-      timelineLabel: '1차',
-      column: 'interview1_result',
-      localKey: 'interview1Result',
-      passedValue: '합격',
-      failedValue: '탈락'
-    }
-  }
+  // 아직 결과를 정하지 않은(미대상) 다음 단계. 앞 단계를 통과한 경우에만 제안한다.
+  if (job.interview1Result === '미대상') return RESULT_CONFIGS.interview1
+  if (job.interview1Result === '합격' && job.interview2Result === '미대상') return RESULT_CONFIGS.interview2
 
   return null
 }
@@ -958,14 +979,14 @@ async function updateJobResult(job, resultConfig, selectedValue, select) {
 
 function getCurrentStage(job) {
   if (job.docStatus === '탈락') return { label: '서류 탈락 · 전형 종료', className: 'is-failure' }
-  if (job.assessmentDate && job.assessmentResult === '탈락') {
+  if (job.assessmentResult === '탈락') {
     return { label: 'AI 역검·인적성 탈락 · 전형 종료', className: 'is-failure' }
   }
   if (job.interview1Result === '탈락') return { label: '1차 면접 탈락 · 전형 종료', className: 'is-failure' }
   if (job.interview2Result === '탈락') return { label: '2차 면접 탈락 · 전형 종료', className: 'is-failure' }
   if (job.finalStatus === '최종탈락') return { label: '최종 전형 탈락', className: 'is-failure' }
   if (job.finalStatus === '최종합격') return { label: '최종 합격', className: 'is-success' }
-  if (job.docStatus === '합격' && job.assessmentDate && job.assessmentResult !== '합격') {
+  if (job.docStatus === '합격' && hasAssessmentStage(job) && job.assessmentResult !== '합격') {
     if (job.assessmentDone) {
       return { label: 'AI 역검·인적성 결과 대기', className: 'is-waiting' }
     }
@@ -996,7 +1017,7 @@ function getDisplayStages(job) {
     { label: '서류', status: job.docStatus }
   ]
 
-  if (job.assessmentDate) {
+  if (hasAssessmentStage(job)) {
     stages.push({
       label: 'AI/인적성',
       status: assessmentStageStatus(job),
@@ -1058,7 +1079,7 @@ function createTimelineStep(stage, onResultClick = null) {
   const label = document.createElement('b')
   label.textContent = stage.label
   const status = document.createElement('span')
-  status.textContent = stage.status
+  status.textContent = onResultClick && stage.status === '—' ? '미정' : stage.status
   step.append(label, status)
 
   if (stage.date && stage.status !== '—') {
@@ -1082,7 +1103,7 @@ function statusClassName(status) {
 
 function isJobRejected(job) {
   return job.docStatus === '탈락'
-    || (job.assessmentDate && job.assessmentResult === '탈락')
+    || job.assessmentResult === '탈락'
     || job.interview1Result === '탈락'
     || job.interview2Result === '탈락'
     || job.finalStatus === '최종탈락'
@@ -1180,7 +1201,6 @@ function startEdit(id) {
   assessmentTimeInput.value = target.assessmentTime
   assessmentDoneInput.checked = target.assessmentDone
   assessmentResultInput.value = target.assessmentResult
-  syncAssessmentResultField()
   linkInput.value = target.link
   jdInput.value = target.jd
   preferredInput.value = target.preferred
@@ -1226,7 +1246,6 @@ async function deleteJob(id) {
 function resetForm() {
   editingId = null
   jobForm.reset()
-  syncAssessmentResultField()
   linkInput.setCustomValidity('')
   clearTimeValidity()
   submitButton.textContent = '등록하기'
@@ -1379,31 +1398,36 @@ for (const timeInput of timeInputs) {
   })
 }
 
-function syncAssessmentResultField({ clearWhenMissing = false } = {}) {
-  const hasAssessment = Boolean(assessmentDateInput.value)
-  assessmentResultRow.hidden = !hasAssessment
-  assessmentResultInput.disabled = !hasAssessment
-
-  if (!hasAssessment && clearWhenMissing) {
+// 마감일을 넣거나 지울 때 결과 칸을 따라 움직인다.
+// 합격·탈락은 마감일을 지워도 보존한다. 마감일을 모르는 전형의 결과만 기록하는 것이 이 폼의 핵심 용도다.
+function syncAssessmentResultToDate() {
+  if (assessmentDateInput.value) {
+    if (assessmentResultInput.value === '미대상') assessmentResultInput.value = '대기'
+    return
+  }
+  if (assessmentResultInput.value === '대기') {
+    assessmentResultInput.value = '미대상'
     assessmentTimeInput.value = ''
     assessmentDoneInput.checked = false
-    assessmentResultInput.value = '대기'
   }
 }
 
-assessmentDateInput.addEventListener('input', () => {
-  syncAssessmentResultField({ clearWhenMissing: true })
-})
+assessmentDateInput.addEventListener('input', syncAssessmentResultToDate)
 
 assessmentDoneInput.addEventListener('change', () => {
-  if (!assessmentDoneInput.checked) assessmentResultInput.value = '대기'
+  if (assessmentDoneInput.checked && assessmentResultInput.value === '미대상') {
+    assessmentResultInput.value = '대기'
+    return
+  }
+  if (!assessmentDoneInput.checked && ['합격', '탈락'].includes(assessmentResultInput.value)) {
+    assessmentResultInput.value = '대기'
+  }
 })
 
 assessmentResultInput.addEventListener('change', () => {
-  if (assessmentResultInput.value !== '대기') assessmentDoneInput.checked = true
+  if (['합격', '탈락'].includes(assessmentResultInput.value)) assessmentDoneInput.checked = true
+  if (assessmentResultInput.value === '미대상') assessmentDoneInput.checked = false
 })
-
-syncAssessmentResultField()
 
 function readLegacyJobs() {
   let raw

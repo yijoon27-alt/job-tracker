@@ -23,10 +23,12 @@ create table if not exists public.jobs (
   jd text not null default '' check (char_length(jd) <= 50000),
   preferred text not null default '' check (char_length(preferred) <= 50000),
   cover_letter text not null default '' check (char_length(cover_letter) <= 200000),
+  notes text not null default '' check (char_length(notes) <= 2000),
   document_prepared boolean not null default false,
   assessment_deadline date,
   assessment_time time,
   assessment_done boolean not null default false,
+  assessment_type text not null default '미지정' check (assessment_type in ('미지정', 'AI 역검', '인적성')),
   assessment_result text not null default '미대상' check (assessment_result in ('미대상', '대기', '합격', '탈락')),
   doc_status text not null default '대기' check (doc_status in ('대기', '합격', '탈락')),
   interview1_date date,
@@ -71,7 +73,29 @@ alter table public.jobs
   add column if not exists deadline_time time,
   add column if not exists assessment_deadline date,
   add column if not exists assessment_time time,
-  add column if not exists assessment_done boolean not null default false;
+  add column if not exists assessment_done boolean not null default false,
+  add column if not exists assessment_type text not null default '미지정',
+  add column if not exists notes text not null default '';
+
+-- 공고별 특이사항·비고 메모입니다. 현황판에서 바로 쓰고 즉시 저장합니다.
+-- 이름이 'assessment_result' / 'assessment_type' 을 부분 문자열로 포함하지 않으므로
+-- 위쪽 do-block 들의 제약조건 교체 로직에 걸리지 않습니다.
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint con
+    join pg_class rel on rel.oid = con.conrelid
+    join pg_namespace nsp on nsp.oid = rel.relnamespace
+    where nsp.nspname = 'public'
+      and rel.relname = 'jobs'
+      and con.conname = 'jobs_notes_length'
+  ) then
+    alter table public.jobs
+      add constraint jobs_notes_length check (char_length(notes) <= 2000);
+  end if;
+end;
+$$;
 
 -- 기존 설치에는 역량검사 결과 필드를 추가합니다.
 -- 이미 이후 전형으로 진행한 기록은 역량검사 합격으로 보정하고, 나머지는 결과 대기로 둡니다.
@@ -138,6 +162,36 @@ begin
 end;
 $$;
 
+-- AI 역량검사/인적성의 유형(AI 역검 / 인적성)을 구분하는 필드입니다.
+-- 유형은 표시 라벨만 바꾸며 전형 존재 여부나 진행 판정에는 사용하지 않습니다.
+-- 제약조건 이름은 설치 경로에 따라 다를 수 있어 pg_constraint에서 찾아 교체합니다.
+do $$
+declare
+  existing_constraint text;
+begin
+  select con.conname into existing_constraint
+  from pg_constraint con
+  join pg_class rel on rel.oid = con.conrelid
+  join pg_namespace nsp on nsp.oid = rel.relnamespace
+  where nsp.nspname = 'public'
+    and rel.relname = 'jobs'
+    and con.contype = 'c'
+    and pg_get_constraintdef(con.oid) like '%assessment_type%'
+  limit 1;
+
+  if existing_constraint is not null then
+    execute format('alter table public.jobs drop constraint %I', existing_constraint);
+  end if;
+
+  alter table public.jobs
+    add constraint jobs_assessment_type_allowed
+    check (assessment_type in ('미지정', 'AI 역검', '인적성'));
+
+  alter table public.jobs
+    alter column assessment_type set default '미지정';
+end;
+$$;
+
 create index if not exists jobs_user_id_idx on public.jobs (user_id);
 
 create or replace function public.set_job_updated_at()
@@ -163,14 +217,14 @@ revoke all on table public.jobs from anon;
 revoke all on table public.jobs from authenticated;
 grant select, delete on table public.jobs to authenticated;
 grant insert (
-  user_id, company, role, deadline, deadline_time, link, jd, preferred, cover_letter,
-  document_prepared, assessment_deadline, assessment_time, assessment_done, assessment_result,
+  user_id, company, role, deadline, deadline_time, link, jd, preferred, cover_letter, notes,
+  document_prepared, assessment_deadline, assessment_time, assessment_done, assessment_type, assessment_result,
   doc_status, interview1_date, interview1_result, interview2_date,
   interview2_result, final_status
 ) on table public.jobs to authenticated;
 grant update (
-  company, role, deadline, deadline_time, link, jd, preferred, cover_letter,
-  document_prepared, assessment_deadline, assessment_time, assessment_done, assessment_result,
+  company, role, deadline, deadline_time, link, jd, preferred, cover_letter, notes,
+  document_prepared, assessment_deadline, assessment_time, assessment_done, assessment_type, assessment_result,
   doc_status, interview1_date, interview1_result, interview2_date,
   interview2_result, final_status
 ) on table public.jobs to authenticated;

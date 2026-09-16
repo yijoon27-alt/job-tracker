@@ -2,7 +2,7 @@ import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js'
 
 const LEGACY_STORAGE_KEY = 'excelJobs'
 const LEGACY_BACKUP_PREFIX = 'excelJobsBackup:'
-const DB_COLUMNS = 'id, company, role, deadline, deadline_time, link, jd, preferred, cover_letter, document_prepared, assessment_deadline, assessment_time, assessment_done, assessment_type, assessment_result, doc_status, interview1_date, interview1_result, interview2_date, interview2_result, final_status, created_at, updated_at'
+const DB_COLUMNS = 'id, company, role, deadline, deadline_time, link, jd, preferred, cover_letter, notes, document_prepared, assessment_deadline, assessment_time, assessment_done, assessment_type, assessment_result, doc_status, interview1_date, interview1_result, interview2_date, interview2_result, final_status, created_at, updated_at'
 
 const DOCUMENT_PREPARED_FLAG = {
   column: 'document_prepared',
@@ -21,6 +21,7 @@ const ASSESSMENT_DONE_FLAG = {
 
 const ARCHIVE_VIEW_KEY = 'jobTracker:showArchived'
 const TODO_WINDOW_DAYS = 7
+const NOTES_MAX_LENGTH = 2000
 const DEMO_HOSTS = ['localhost', '127.0.0.1']
 
 const DOC_STATUSES = ['대기', '합격', '탈락']
@@ -66,6 +67,7 @@ const linkInput = document.querySelector('#linkInput')
 const jdInput = document.querySelector('#jdInput')
 const preferredInput = document.querySelector('#preferredInput')
 const coverLetterInput = document.querySelector('#coverLetterInput')
+const notesInput = document.querySelector('#notesInput')
 const docStatusInput = document.querySelector('#docStatusInput')
 const interview1Date = document.querySelector('#interview1Date')
 const interview1Result = document.querySelector('#interview1Result')
@@ -341,6 +343,7 @@ function fromDatabaseJob(row) {
     jd: row.jd || '',
     preferred: row.preferred || '',
     coverLetter: row.cover_letter || '',
+    notes: row.notes || '',
     documentPrepared: row.document_prepared === true,
     assessmentDate: row.assessment_deadline || '',
     assessmentTime: toTimeInputValue(row.assessment_time),
@@ -366,6 +369,7 @@ function buildSearchIndex(job) {
   return {
     title: `${job.company} ${job.role}`.toLowerCase(),
     jd: `${job.jd} ${job.preferred}`.toLowerCase(),
+    notes: String(job.notes).toLowerCase(),
     coverLetter: String(job.coverLetter).toLowerCase()
   }
 }
@@ -380,6 +384,7 @@ function matchesKeyword(job, keyword) {
   if (!index) return `${job.company} ${job.role}`.toLowerCase().includes(keyword)
   return index.title.includes(keyword)
     || index.jd.includes(keyword)
+    || index.notes.includes(keyword)
     || index.coverLetter.includes(keyword)
 }
 
@@ -403,6 +408,7 @@ function getFormJobData() {
     jd: jdInput.value,
     preferred: preferredInput.value,
     cover_letter: coverLetterInput.value,
+    notes: notesInput.value.slice(0, NOTES_MAX_LENGTH),
     document_prepared: documentPreparedInput.checked,
     assessment_deadline: assessmentDate || null,
     assessment_time: assessmentDate ? normalizeTimeText(assessmentTimeInput.value) || null : null,
@@ -1156,7 +1162,80 @@ function createProcessCell(job) {
   }
 
   cell.append(currentHeader, timeline)
+  cell.appendChild(createNotesEditor(job))
   return cell
+}
+
+// 현황판에서 바로 쓰는 특이사항·비고 메모.
+// 포커스가 빠질 때 값이 달라졌을 때만 저장한다. Esc 는 되돌리기, Cmd/Ctrl+Enter 는 즉시 저장이다.
+function createNotesEditor(job) {
+  const wrapper = document.createElement('div')
+  wrapper.className = 'memo-box'
+
+  const field = document.createElement('textarea')
+  field.className = 'memo-input'
+  field.rows = 2
+  field.maxLength = NOTES_MAX_LENGTH
+  field.value = job.notes
+  field.placeholder = '특이사항·비고 메모'
+  field.setAttribute('aria-label', `${job.company} 특이사항 메모`)
+
+  field.addEventListener('blur', () => {
+    void saveJobNotes(job, field)
+  })
+  field.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      event.stopPropagation()
+      field.value = job.notes
+      field.blur()
+      return
+    }
+    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+      event.preventDefault()
+      field.blur()
+    }
+  })
+
+  wrapper.appendChild(field)
+  return wrapper
+}
+
+async function saveJobNotes(job, field) {
+  if (!currentUser) return
+  const nextValue = field.value.slice(0, NOTES_MAX_LENGTH)
+  if (nextValue === job.notes) return
+
+  if (demoMode) {
+    job.notes = nextValue
+    job.searchIndex = buildSearchIndex(job)
+    showAppMessage('미리보기 화면에만 메모를 반영했습니다.')
+    return
+  }
+
+  field.disabled = true
+  const { data, error } = await supabaseClient
+    .from('jobs')
+    .update({ notes: nextValue })
+    .eq('id', job.id)
+    .eq('user_id', currentUser.id)
+    .select('notes, updated_at')
+    .single()
+  field.disabled = false
+
+  if (error) {
+    field.value = job.notes
+    const schemaNeedsUpdate = isSchemaOutdated(error.message)
+    showAppMessage(schemaNeedsUpdate
+      ? '최신 DB 업데이트가 필요합니다. Supabase SQL Editor에서 supabase-schema.sql 전체를 실행해 주세요.'
+      : '메모를 저장하지 못했습니다. 인터넷 연결과 DB 설정을 확인해 주세요.', true)
+    return
+  }
+
+  job.notes = data.notes || ''
+  job.updatedAt = data.updated_at
+  job.searchIndex = buildSearchIndex(job)
+  field.value = job.notes
+  showAppMessage(job.notes ? '메모를 저장했습니다.' : '메모를 비웠습니다.')
 }
 
 function createQuickResultSelect(job, resultConfig = getPendingResultConfig(job)) {
@@ -1554,6 +1633,7 @@ function startEdit(id) {
   jdInput.value = target.jd
   preferredInput.value = target.preferred
   coverLetterInput.value = target.coverLetter
+  notesInput.value = target.notes
   docStatusInput.value = target.docStatus
   interview1Date.value = target.interview1Date
   interview1Result.value = target.interview1Result
@@ -1952,6 +2032,7 @@ exportButton.addEventListener('click', () => {
     jd: job.jd,
     preferred: job.preferred,
     coverLetter: job.coverLetter,
+    notes: job.notes,
     documentPrepared: job.documentPrepared,
     assessmentDate: job.assessmentDate,
     assessmentTime: job.assessmentTime,

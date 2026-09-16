@@ -6,9 +6,9 @@
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self'; connect-src 'self' https://*.supabase.co; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests">
   <title>취업 공채 대시보드</title>
-  <link rel="stylesheet" href="style.css?v=20260917-schedule-search">
+  <link rel="stylesheet" href="style.css?v=20260918-notes">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.min.js" integrity="sha384-yiVMs0R/Jyz7OhoXa/DsEMUSBLjEhr/QJta2ONO+zB6I8/GmNg/7AUFrZmAJV7KV" crossorigin="anonymous"></script>
-  <script type="module" src="app.js?v=20260917-schedule-search"></script>
+  <script type="module" src="app.js?v=20260918-notes"></script>
 </head>
 <body>
   <header class="page-header">
@@ -146,6 +146,11 @@
             <textarea id="coverLetterInput" rows="5" maxlength="200000" placeholder="Q1. 지원 동기 및 포부&#13;질문과 답변 내용을 작성해 두세요."></textarea>
           </div>
           <div class="form-row">
+            <label for="notesInput">특이사항 / 비고 메모</label>
+            <textarea id="notesInput" rows="3" maxlength="2000" placeholder="면접 복장, 담당자 연락, 과제 제출 방식 등 기억할 내용을 적어 두세요."></textarea>
+            <small class="form-hint">현황판의 <strong>현재 전형</strong> 칸에서도 바로 쓰고 고칠 수 있습니다.</small>
+          </div>
+          <div class="form-row">
             <label for="docStatusInput">서류 합격 여부</label>
             <select id="docStatusInput">
               <option value="대기">⏳ 대기중</option>
@@ -196,7 +201,7 @@
         <div class="list-header">
           <h2>📊 공채 프로세스 현황판</h2>
           <div class="search-area">
-            <input type="text" id="searchInput" placeholder="기업·직무·JD·자소서 전체 검색" autocomplete="off">
+            <input type="text" id="searchInput" placeholder="기업·직무·JD·자소서·메모 전체 검색" autocomplete="off">
             <select id="preparedFilter" aria-label="서류 작성 여부 필터">
               <option value="전체">서류 전체</option>
               <option value="미작성">미작성</option>

@@ -1103,6 +1103,47 @@ button {
   border-style: dashed;
 }
 
+/* 현황판에서 바로 쓰는 특이사항·비고 메모 */
+.memo-box {
+  margin-top: 10px;
+}
+
+.memo-input {
+  width: 100%;
+  padding: 6px 8px;
+  color: #475569;
+  background-color: #fbfcfe;
+  border: 1px dashed #cbd5e1;
+  border-radius: 7px;
+  font-size: 10px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.memo-input::placeholder {
+  color: #b4bfcd;
+}
+
+.memo-input:hover:not(:focus) {
+  background-color: #f8fafc;
+  border-color: #94a3b8;
+}
+
+/* 내용이 있는 메모는 실선으로 바꿔 빈 칸과 구별한다 */
+.memo-input:not(:placeholder-shown) {
+  color: #334155;
+  background-color: #ffffff;
+  border-style: solid;
+  border-color: #e2e8f0;
+}
+
+.memo-input:focus {
+  color: #1e293b;
+  background-color: #ffffff;
+  border-style: solid;
+  border-color: #3b82f6;
+}
+
 .table-actions {
   text-align: center;
 }
@@ -1399,6 +1440,12 @@ button {
 
   .deadline-cell > time {
     margin: 0 0 0 8px;
+  }
+
+  /* 모바일에서 16px 미만이면 포커스 시 화면이 확대되므로 키운다 */
+  .memo-input {
+    padding: 8px 10px;
+    font-size: 16px;
   }
 
   .table-actions {

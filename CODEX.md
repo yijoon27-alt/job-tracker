@@ -16,6 +16,7 @@
 - 2026-09-14 4차 작업으로 AI 역량검사/인적성을 1차·2차 면접과 동등한 정식 전형으로 승격했다. `assessment_result`가 `미대상 / 대기 / 합격 / 탈락` 네 값을 갖게 되어, 마감일을 입력하지 않은 공고도 인적성 합격·탈락을 기록할 수 있다. 같은 날 현황판 `결과 입력`이 전형 순서(서류 → 인적성 → 1차 → 2차 → 최종)를 정확히 따라가도록 고쳤다.
 - 2026-09-16 5차 작업으로 AI 역량검사와 인적성을 구분하는 `assessment_type` 필드를 추가했다. `미지정 / AI 역검 / 인적성` 세 값이며 **표시 라벨만 바꾼다.** 전형 유무 판정, 정렬, 요약 집계는 전혀 건드리지 않았다.
 - 2026-09-17 6차 작업으로 `이번 주 할 일` 배너, 면접일을 반영한 정렬, JD·자소서 전문 검색, 종료 공고 접기를 추가했다. **새 DB 컬럼이 없어 `supabase-schema.sql`은 그대로다.** 기존 `interview1_date` / `interview2_date`를 정렬에 쓰기 시작했을 뿐이다.
+- 2026-09-18 7차 작업으로 공고별 특이사항 메모(`notes`)를 추가했다. **새 컬럼이 생기므로 SQL 실행이 먼저다.** 현황판 `현재 전형` 칸에서 인라인으로 쓰고 blur 시 자동 저장한다.
 - GitHub 배포와 별개로 최신 `supabase-schema.sql`이 Supabase SQL Editor에 적용되어 있어야 한다. 현재 코드는 `document_prepared`, `deadline_time`, `assessment_deadline`, `assessment_time`, `assessment_done`, `assessment_type`, `assessment_result` 필드를 모두 전제로 하며, `assessment_result`는 `미대상`을 허용하는 최신 제약조건이어야 한다.
 
 ## 현재 현황판 UI/UX
@@ -62,7 +63,10 @@
 - `getPendingResultConfig()`가 지금 결과를 넣을 수 있는 단계 하나를 고른다. 서류 → 인적성 → 1차 → 2차 → 최종 순서를 그대로 따라가며, 명시적으로 `대기`인 단계를 먼저 찾고 없으면 앞 단계를 통과한 첫 `미대상` 단계를 제안한다. 그래서 1차가 기본값 `미대상`이어도 수정 패널을 열지 않고 합격·탈락을 넣을 수 있다. 다만 1차가 `미대상`이고 2차가 `대기`인 공고는 1차를 건너뛰고 2차를 가리킨다. 탈락은 확인창을 거치며 저장 성공 시 목록·정렬·요약을 다시 렌더링한다.
 - 결과 입력이 가능한 현재 단계의 타임라인 칩은 클릭 가능한 버튼으로 렌더링하고, 클릭하면 같은 `결과 입력` 선택 메뉴를 연다. 이때 상태가 `—`이면 점선 테두리와 함께 `미정`으로 표시한다. 결과 입력 대상이 아닌 `—` 단계는 비활성 표시를 유지한다.
 - 데스크톱에서는 압축형 표, 폭 720px 이하에서는 기업별 카드 형태로 표시한다.
-- CSS와 JavaScript에는 `20260917-schedule-search` 캐시 버전이 적용되어 있다.
+- 특이사항 메모는 `createNotesEditor()`가 `createProcessCell()` 끝에 붙인다. `saveJobNotes()`가 blur 시 **값이 달라졌을 때만** update 하고, 저장 후 `job.searchIndex`를 다시 만든다(메모도 검색 대상이라 갱신을 빠뜨리면 방금 쓴 메모가 검색되지 않는다). `Esc`는 되돌리기, `Cmd/Ctrl+Enter`는 즉시 저장이며, `Esc` 처리에서 `stopPropagation()`을 호출해 전역 단축키가 수정 패널을 닫지 않게 한다. 저장 실패 시 원래 값으로 되돌리고 스키마 안내를 띄운다.
+- 메모 입력칸은 `renderJobs()`마다 새로 만들어지므로 **저장 성공 뒤 `renderJobs()`를 호출하지 않는다.** 호출하면 편집 중인 칸이 교체되어 포커스와 입력이 끊긴다. 목록 정렬·집계에 영향을 주지 않는 필드라 다시 그릴 이유도 없다.
+- 모바일에서는 `.memo-input` 글자 크기를 16px로 키운다. 16px 미만이면 iOS 사파리가 포커스 시 화면을 확대한다.
+- CSS와 JavaScript에는 `20260918-notes` 캐시 버전이 적용되어 있다.
 
 ## 요약 통계 계산 기준
 
@@ -80,6 +84,7 @@
 
 - 기본 정보: `company`, `role`, `deadline`, `deadline_time`, `link`
 - 지원 자료: `jd`, `preferred`, `cover_letter`
+- 특이사항 메모: `notes text not null default ''` (최대 2000자, `jobs_notes_length` 제약조건)
 - 작성 여부: `document_prepared boolean not null default false`
 - AI 역량검사/인적성: `assessment_deadline date`, `assessment_time time`, `assessment_done boolean not null default false`, `assessment_type`, `assessment_result`
 - 전형 상태: `doc_status`, `interview1_date`, `interview1_result`, `interview2_date`, `interview2_result`, `final_status`

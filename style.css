@@ -420,8 +420,47 @@ button {
   flex-wrap: wrap;
 }
 
-#countText {
+/* 건수 문구와 종료 공고 접기 토글을 한 줄에 좌우로 놓는다 */
+.list-tools {
   margin: -6px 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.archive-toggle {
+  padding: 5px 12px;
+  color: #475569;
+  background-color: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.archive-toggle:hover:not(:disabled) {
+  color: #1e293b;
+  background-color: #f1f5f9;
+}
+
+.archive-toggle[aria-pressed="true"] {
+  color: #1d4ed8;
+  background-color: #eff6ff;
+  border-color: #bfdbfe;
+}
+
+.archive-toggle:disabled {
+  color: #94a3b8;
+  background-color: #f8fafc;
+  border-style: dashed;
+  cursor: default;
+}
+
+#countText {
+  margin: 0;
   color: #475569;
   font-size: 12px;
   background-color: #f1f5f9;
@@ -526,6 +565,145 @@ button {
 .summary-waiting strong { color: #b45309; }
 .summary-passed strong { color: #1d4ed8; }
 .summary-ongoing strong { color: #7c3aed; }
+
+/* 이번 주 챙길 일정 배너. 색 의미는 현황판의 마감 강조와 똑같이 맞춘다 */
+.todo-panel {
+  margin-bottom: 18px;
+  padding: 14px 16px;
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+}
+
+.todo-panel[hidden] {
+  display: none;
+}
+
+.todo-head {
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.todo-head h3 {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #1e293b;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.todo-count {
+  padding: 2px 8px;
+  color: #475569;
+  background-color: #e2e8f0;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.todo-export {
+  padding: 5px 12px;
+  color: #475569;
+  background-color: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.todo-export:hover {
+  color: #1e293b;
+  background-color: #f1f5f9;
+}
+
+.todo-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.todo-chip {
+  padding: 7px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 9px;
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.todo-chip:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(15, 23, 42, 0.12);
+}
+
+.todo-chip:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.todo-chip-dday {
+  padding: 2px 6px;
+  border-radius: 5px;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.todo-chip-company {
+  color: #1e293b;
+  font-weight: 700;
+}
+
+.todo-chip-label {
+  color: #475569;
+}
+
+.todo-chip-time {
+  padding-left: 7px;
+  border-left: 1px solid #e2e8f0;
+  color: #94a3b8;
+  font-size: 10px;
+}
+
+.todo-chip.deadline-urgent {
+  border-color: #fecaca;
+}
+
+.todo-chip.deadline-urgent .todo-chip-dday {
+  color: #dc2626;
+  background-color: #fef2f2;
+}
+
+.todo-chip.deadline-soon {
+  border-color: #fde68a;
+}
+
+.todo-chip.deadline-soon .todo-chip-dday {
+  color: #b45309;
+  background-color: #fffbeb;
+}
+
+.todo-chip.deadline-open .todo-chip-dday,
+.todo-chip.deadline-closed .todo-chip-dday {
+  color: #475569;
+  background-color: #f1f5f9;
+}
+
+/* 기업명·직무가 아니라 이 자료에서 검색어가 걸렸다는 표시 */
+.material-btn.is-match {
+  box-shadow: 0 0 0 2px #fbbf24;
+}
 
 .deadline-column { width: 13%; }
 .job-column { width: 22%; }
@@ -1119,6 +1297,24 @@ button {
 
   .summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .list-tools {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .archive-toggle {
+    width: 100%;
+  }
+
+  .todo-chip {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .todo-export {
+    flex: 1;
   }
 
   .summary-card:last-child {

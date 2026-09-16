@@ -19,6 +19,10 @@ const ASSESSMENT_DONE_FLAG = {
   errorText: '역량검사 응시 상태를 저장하지 못했습니다. 인터넷 연결과 DB 설정을 확인해 주세요.'
 }
 
+const ARCHIVE_VIEW_KEY = 'jobTracker:showArchived'
+const TODO_WINDOW_DAYS = 7
+const DEMO_HOSTS = ['localhost', '127.0.0.1']
+
 const DOC_STATUSES = ['대기', '합격', '탈락']
 const ASSESSMENT_TYPES = ['미지정', 'AI 역검', '인적성']
 const ASSESSMENT_RESULTS = ['미대상', '대기', '합격', '탈락']
@@ -74,6 +78,11 @@ const searchInput = document.querySelector('#searchInput')
 const preparedFilter = document.querySelector('#preparedFilter')
 const statusFilter = document.querySelector('#statusFilter')
 const countText = document.querySelector('#countText')
+const archiveToggle = document.querySelector('#archiveToggle')
+const todoPanel = document.querySelector('#todoPanel')
+const todoCount = document.querySelector('#todoCount')
+const todoList = document.querySelector('#todoList')
+const todoExportButton = document.querySelector('#todoExportButton')
 const emptyMessage = document.querySelector('#emptyMessage')
 const jobTableBody = document.querySelector('#jobTableBody')
 
@@ -101,10 +110,14 @@ let editingId = null
 let authViewVersion = 0
 let formReturnFocus = null
 let activeSummaryFilter = 'all'
+let showArchived = readArchivePreference()
+let demoMode = false
 
 initialize()
 
 async function initialize() {
+  if (await tryDemoMode()) return
+
   if (typeof window.supabase?.createClient !== 'function') {
     loadingPanel.hidden = true
     setupPanel.hidden = false
@@ -147,6 +160,36 @@ async function initialize() {
       void applySession(session)
     }, 0)
   })
+}
+
+// 로컬 미리보기 전용 화면. 공개 사이트에서는 호스트명 검사에 막히고,
+// preview-demo.js 를 올리지 않으면 import 가 실패해 평소 로그인 흐름으로 돌아간다.
+async function tryDemoMode() {
+  const wantsDemo = new URLSearchParams(window.location.search).get('demo') === '1'
+  if (!wantsDemo || !DEMO_HOSTS.includes(window.location.hostname)) return false
+
+  let demoModule
+  try {
+    demoModule = await import('./preview-demo.js')
+  } catch {
+    return false
+  }
+
+  demoMode = true
+  currentUser = { id: 'demo-user', email: '미리보기 모드' }
+  jobs = demoModule.buildDemoRows().map(fromDatabaseJob)
+
+  loadingPanel.hidden = true
+  setupPanel.hidden = true
+  authPanel.hidden = true
+  migrationPanel.hidden = true
+  dashboard.hidden = false
+  accountBar.hidden = false
+  logoutButton.hidden = true
+  accountEmail.textContent = '🧪 로컬 미리보기'
+  renderJobs()
+  showAppMessage('로컬 미리보기 모드입니다. 샘플 데이터이며 어떤 변경도 저장되지 않습니다.')
+  return true
 }
 
 function validateSupabaseConfig() {
@@ -288,7 +331,7 @@ async function loadJobs() {
 }
 
 function fromDatabaseJob(row) {
-  return {
+  const job = {
     id: row.id,
     company: row.company,
     role: row.role,
@@ -313,6 +356,31 @@ function fromDatabaseJob(row) {
     createdAt: row.created_at,
     updatedAt: row.updated_at
   }
+  job.searchIndex = buildSearchIndex(job)
+  return job
+}
+
+// 검색어 대조용 소문자 문자열. 자소서가 최대 20만 자라 키 입력마다 만들지 않고
+// 목록을 받아올 때와 저장 직후에 한 번씩만 만든다. 어느 칸에서 걸렸는지도 구분한다.
+function buildSearchIndex(job) {
+  return {
+    title: `${job.company} ${job.role}`.toLowerCase(),
+    jd: `${job.jd} ${job.preferred}`.toLowerCase(),
+    coverLetter: String(job.coverLetter).toLowerCase()
+  }
+}
+
+function activeKeyword() {
+  return searchInput.value.trim().toLowerCase()
+}
+
+function matchesKeyword(job, keyword) {
+  if (!keyword) return true
+  const index = job.searchIndex
+  if (!index) return `${job.company} ${job.role}`.toLowerCase().includes(keyword)
+  return index.title.includes(keyword)
+    || index.jd.includes(keyword)
+    || index.coverLetter.includes(keyword)
 }
 
 function getFormJobData() {
@@ -374,6 +442,23 @@ jobForm.addEventListener('submit', async (event) => {
     return
   }
 
+  if (demoMode) {
+    const savedJob = fromDatabaseJob({
+      ...getFormJobData(),
+      id: editingId ?? `demo-${jobs.length + 1}-${jobs.length}`,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    })
+    const demoIndex = jobs.findIndex((job) => job.id === savedJob.id)
+    if (demoIndex === -1) jobs.push(savedJob)
+    else jobs[demoIndex] = savedJob
+    renderJobs()
+    resetForm()
+    closeJobForm()
+    showAppMessage('미리보기 화면에만 반영했습니다. 실제로 저장되지는 않습니다.')
+    return
+  }
+
   setJobFormBusy(true)
   showAppMessage(editingId === null ? '기록을 저장하는 중입니다.' : '기록을 수정하는 중입니다.')
 
@@ -424,11 +509,11 @@ function renderJobs() {
   const filteredJobs = getFilteredJobs()
   jobTableBody.replaceChildren()
   emptyMessage.hidden = filteredJobs.length > 0
-  countText.textContent = filteredJobs.length === jobs.length
-    ? `총 ${jobs.length}개 공고 관리 중`
-    : `총 ${jobs.length}개 중 ${filteredJobs.length}개 표시`
+  countText.textContent = buildCountText(filteredJobs.length)
 
   renderSummary()
+  renderTodoBanner()
+  renderArchiveToggle()
 
   for (const job of filteredJobs) {
     jobTableBody.appendChild(createTableRow(job))
@@ -465,14 +550,61 @@ function percentage(value, total) {
   return total > 0 ? Math.round((value / total) * 100) : 0
 }
 
+function finishedJobCount() {
+  return jobs.filter(isFinishedJob).length
+}
+
+function buildCountText(visibleCount) {
+  if (visibleCount === jobs.length) return `총 ${jobs.length}개 공고 관리 중`
+  const base = `총 ${jobs.length}개 중 ${visibleCount}개 표시`
+  const hiddenFinished = shouldIncludeFinished() ? 0 : finishedJobCount()
+  return hiddenFinished > 0 ? `${base} · 종료 ${hiddenFinished}건 숨김` : base
+}
+
+// 종료 공고를 강제로 보여줘야 하는 상황. 검색이나 종료 관련 필터를 걸었는데도
+// 접기 설정 때문에 결과가 비면 '분명 있는데 안 나온다'가 되기 때문이다.
+function shouldIncludeFinished() {
+  if (showArchived) return true
+  if (activeKeyword()) return true
+  if (['최종합격', '최종탈락'].includes(statusFilter.value)) return true
+  return Boolean(activeSummaryFilter) && activeSummaryFilter !== 'all'
+}
+
+function renderArchiveToggle() {
+  const finishedCount = finishedJobCount()
+  archiveToggle.hidden = finishedCount === 0
+  const forcedOpen = shouldIncludeFinished() && !showArchived
+  archiveToggle.disabled = forcedOpen
+  archiveToggle.textContent = forcedOpen
+    ? '검색·필터 중 — 종료 공고 포함'
+    : (showArchived ? `종료 공고 ${finishedCount}건 숨기기` : `종료 공고 ${finishedCount}건 보기`)
+  archiveToggle.setAttribute('aria-pressed', String(showArchived))
+}
+
+function readArchivePreference() {
+  try {
+    return window.localStorage.getItem(ARCHIVE_VIEW_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+function writeArchivePreference(value) {
+  try {
+    window.localStorage.setItem(ARCHIVE_VIEW_KEY, value ? '1' : '0')
+  } catch {
+    // 화면 설정일 뿐이라 저장에 실패해도 그대로 진행한다.
+  }
+}
+
 function getFilteredJobs() {
-  const keyword = searchInput.value.trim().toLowerCase()
+  const keyword = activeKeyword()
   const selectedStatus = statusFilter.value
   const selectedPrepared = preparedFilter.value
+  const includeFinished = shouldIncludeFinished()
 
   return jobs
     .filter((job) => {
-      const searchText = `${job.company} ${job.role}`.toLowerCase()
       const matchesStatus = selectedStatus === '전체'
         || (selectedStatus === '진행중'
           && !isJobRejected(job)
@@ -483,10 +615,11 @@ function getFilteredJobs() {
       const matchesPrepared = selectedPrepared === '전체'
         || (selectedPrepared === '작성완료' && job.documentPrepared)
         || (selectedPrepared === '미작성' && !job.documentPrepared)
-      return searchText.includes(keyword)
+      return matchesKeyword(job, keyword)
         && matchesStatus
         && matchesPrepared
         && matchesSummaryQuickFilter(job)
+        && (includeFinished || !isFinishedJob(job))
     })
     .sort(compareJobsByDeadline)
 }
@@ -583,13 +716,166 @@ function isOngoingProcess(job) {
     || ['대기', '합격'].includes(job.interview2Result)
 }
 
-// 정렬과 행 강조에 쓰는 '다음에 지켜야 할 마감'.
-// 서류를 다 썼고 역량검사만 남았다면 서류 마감이 아니라 역량검사 마감이 기준이 된다.
-function nextDeadline(job) {
-  if (job.documentPrepared && isAssessmentPending(job)) {
-    return { date: job.assessmentDate, time: job.assessmentTime }
+// 탈락이나 최종합격으로 끝난 공고인지. 정렬, 종료 공고 접기, 일정 수집이 같은 기준을 쓴다.
+function isFinishedJob(job) {
+  return isJobRejected(job) || job.finalStatus === '최종합격'
+}
+
+// 이 공고에서 아직 챙겨야 할 일정. 이미 끝낸 일과 지나간 마감은 넣지 않는다.
+// 면접은 시각 칸이 없으므로 그날 끝까지 남은 일정으로 본다.
+function upcomingEvents(job) {
+  if (isFinishedJob(job)) return []
+
+  const events = []
+  if (!job.documentPrepared && !isDeadlinePassed(job.date, job.deadlineTime)) {
+    events.push({ kind: 'document', label: '서류 마감', date: job.date, time: job.deadlineTime })
   }
+  if (isAssessmentPending(job)) {
+    events.push({
+      kind: 'assessment',
+      label: `${assessmentLabel(job)} 마감`,
+      date: job.assessmentDate,
+      time: job.assessmentTime
+    })
+  }
+  if (job.interview1Result === '대기' && job.interview1Date && !isDeadlinePassed(job.interview1Date, '')) {
+    events.push({ kind: 'interview1', label: '1차 면접', date: job.interview1Date, time: '' })
+  }
+  if (job.interview2Result === '대기' && job.interview2Date && !isDeadlinePassed(job.interview2Date, '')) {
+    events.push({ kind: 'interview2', label: '2차 면접', date: job.interview2Date, time: '' })
+  }
+
+  return events.sort((first, second) => (
+    deadlineTimestamp(first.date, first.time) - deadlineTimestamp(second.date, second.time)
+  ))
+}
+
+// 정렬과 행 강조에 쓰는 '다음에 챙겨야 할 일정'.
+// 서류를 다 썼고 역량검사만 남았다면 역량검사 마감이, 면접이 잡혀 있으면 면접일이 기준이 된다.
+// 챙길 일정이 없으면 예전처럼 서류 마감으로 돌아가 정렬 순서를 유지한다.
+function nextDeadline(job) {
+  const [next] = upcomingEvents(job)
+  if (next) return { date: next.date, time: next.time }
   return { date: job.date, time: job.deadlineTime }
+}
+
+function collectTodoEvents() {
+  const events = []
+  for (const job of jobs) {
+    for (const event of upcomingEvents(job)) {
+      const diffDays = daysUntilDeadline(event.date)
+      if (diffDays === null || diffDays > TODO_WINDOW_DAYS) continue
+      events.push({ ...event, job })
+    }
+  }
+
+  return events.sort((first, second) => (
+    deadlineTimestamp(first.date, first.time) - deadlineTimestamp(second.date, second.time)
+  ))
+}
+
+// 요약 카드와 마찬가지로 검색·필터 결과가 아니라 전체 공고를 기준으로 계산한다.
+function renderTodoBanner() {
+  const events = collectTodoEvents()
+  todoPanel.hidden = events.length === 0
+  todoCount.textContent = `${events.length}건`
+  todoList.replaceChildren()
+  for (const event of events) {
+    todoList.appendChild(createTodoChip(event))
+  }
+}
+
+function createTodoChip(event) {
+  const chip = document.createElement('button')
+  chip.type = 'button'
+  chip.className = `todo-chip ${deadlineClassName(event.date, event.time)}`
+  chip.title = `${event.job.company} · ${event.job.role}`
+
+  const dDay = document.createElement('b')
+  dDay.className = 'todo-chip-dday'
+  dDay.textContent = calculateDDay(event.date, event.time)
+
+  const company = document.createElement('span')
+  company.className = 'todo-chip-company'
+  company.textContent = event.job.company
+
+  const label = document.createElement('span')
+  label.className = 'todo-chip-label'
+  label.textContent = event.label
+
+  const moment = document.createElement('time')
+  moment.className = 'todo-chip-time'
+  moment.dateTime = momentAttribute(event.date, event.time)
+  moment.textContent = momentText(event.date, event.time).slice(5).replace('-', '.')
+
+  chip.append(dDay, company, label, moment)
+  chip.addEventListener('click', () => focusJobFromTodo(event.job))
+  return chip
+}
+
+// 칩을 누르면 아래 현황판이 그 공고만 보여주도록 기존 검색 경로를 그대로 쓴다.
+function focusJobFromTodo(job) {
+  clearSummaryQuickFilter()
+  preparedFilter.value = '전체'
+  statusFilter.value = '전체'
+  searchInput.value = job.company
+  renderJobs()
+  searchInput.focus()
+}
+
+function exportTodoCalendar() {
+  const events = collectTodoEvents()
+  if (events.length === 0) {
+    showAppMessage('내보낼 일정이 없습니다.', true)
+    return
+  }
+
+  const blob = new Blob([buildCalendarText(events)], { type: 'text/calendar;charset=utf-8' })
+  const objectUrl = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = objectUrl
+  anchor.download = `job-tracker-schedule-${new Date().toISOString().slice(0, 10)}.ics`
+  anchor.click()
+  URL.revokeObjectURL(objectUrl)
+  showAppMessage(`일정 ${events.length}건을 캘린더 파일로 저장했습니다.`)
+}
+
+function buildCalendarText(events) {
+  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//job-tracker//KO', 'CALSCALE:GREGORIAN']
+  const stamp = toCalendarStamp(new Date())
+
+  for (const event of events) {
+    const start = deadlineMoment(event.date, event.time)
+    if (!start) continue
+    const end = new Date(start.getTime() + 3600000)
+    lines.push(
+      'BEGIN:VEVENT',
+      `UID:${event.job.id}-${event.kind}@job-tracker`,
+      `DTSTAMP:${stamp}`,
+      `DTSTART:${toCalendarStamp(start)}`,
+      `DTEND:${toCalendarStamp(end)}`,
+      `SUMMARY:${escapeCalendarText(`${event.job.company} ${event.label}`)}`,
+      `DESCRIPTION:${escapeCalendarText(event.job.role)}`,
+      'END:VEVENT'
+    )
+  }
+
+  lines.push('END:VCALENDAR')
+  return lines.join('\r\n')
+}
+
+// 표준 시간대를 붙이지 않는 floating time 이라 어느 기기에서 열어도 적어둔 시각 그대로 보인다.
+function toCalendarStamp(date) {
+  const pad = (value) => String(value).padStart(2, '0')
+  return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}`
+    + `T${pad(date.getHours())}${pad(date.getMinutes())}00`
+}
+
+function escapeCalendarText(value) {
+  return String(value)
+    .replace(/\\/g, '\\\\')
+    .replace(/[;,]/g, (symbol) => `\\${symbol}`)
+    .replace(/\r?\n/g, '\\n')
 }
 
 function createTableRow(job) {
@@ -740,6 +1026,17 @@ function createPreparedCell(job) {
 async function updateJobFlag(job, flag, checkbox) {
   if (!currentUser) return
   const nextValue = checkbox.checked
+
+  if (demoMode) {
+    job[flag.localKey] = nextValue
+    if (flag === ASSESSMENT_DONE_FLAG && !nextValue && ['합격', '탈락'].includes(job.assessmentResult)) {
+      job.assessmentResult = '대기'
+    }
+    renderJobs()
+    showAppMessage(nextValue ? flag.onText : flag.offText)
+    return
+  }
+
   const updates = { [flag.column]: nextValue }
   let selectedColumns = `${flag.column}, updated_at`
 
@@ -778,16 +1075,24 @@ function createMaterialsCell(job) {
   cell.dataset.label = '지원 자료'
 
   appendMaterialLink(cell, job.link)
-  appendMaterialButton(cell, job.jd, 'JD', 'jd-btn', () => {
+  appendMaterialButton(cell, job.jd, 'JD', `jd-btn${materialMatchClass(job, job.jd)}`, () => {
     openModal(job.company, `${job.role} - 직무기술서(JD)`, job.jd)
   })
-  appendMaterialButton(cell, job.preferred, '우대', 'pref-btn', () => {
+  appendMaterialButton(cell, job.preferred, '우대', `pref-btn${materialMatchClass(job, job.preferred)}`, () => {
     openModal(job.company, `${job.role} - 우대사항`, job.preferred)
   })
-  appendMaterialButton(cell, job.coverLetter, '자소서', 'cl-btn', () => {
+  appendMaterialButton(cell, job.coverLetter, '자소서', `cl-btn${materialMatchClass(job, job.coverLetter)}`, () => {
     openModal(job.company, `${job.role} - 자기소개서`, job.coverLetter)
   })
   return cell
+}
+
+// 기업명·직무로는 설명되지 않는데 목록에 올라온 행에, 어느 자료에서 걸렸는지 표시한다.
+function materialMatchClass(job, text) {
+  const keyword = activeKeyword()
+  if (!keyword || !text) return ''
+  if (job.searchIndex?.title.includes(keyword)) return ''
+  return String(text).toLowerCase().includes(keyword) ? ' is-match' : ''
 }
 
 function appendMaterialLink(cell, link) {
@@ -977,6 +1282,14 @@ async function updateJobResult(job, resultConfig, selectedValue, select) {
       select.value = ''
       return
     }
+  }
+
+  if (demoMode) {
+    job[resultConfig.localKey] = selectedValue
+    if (resultConfig.marksAssessmentDone) job.assessmentDone = true
+    renderJobs()
+    showAppMessage(`미리보기 화면에만 ${resultConfig.label} ${selectedValue}으로 반영했습니다.`)
+    return
   }
 
   const updates = { [resultConfig.column]: selectedValue }
@@ -1258,6 +1571,17 @@ function startEdit(id) {
 async function deleteJob(id) {
   if (!currentUser || !window.confirm('이 공채 프로세스 추적 데이터를 삭제하시겠습니까?')) return
 
+  if (demoMode) {
+    jobs = jobs.filter((job) => job.id !== id)
+    if (editingId === id) {
+      resetForm()
+      closeJobForm()
+    }
+    renderJobs()
+    showAppMessage('미리보기 화면에서만 삭제했습니다.')
+    return
+  }
+
   showAppMessage('기록을 삭제하는 중입니다.')
   const { error } = await supabaseClient
     .from('jobs')
@@ -1368,6 +1692,12 @@ for (const card of summaryCards) {
     renderJobs()
   })
 }
+archiveToggle.addEventListener('click', () => {
+  showArchived = !showArchived
+  writeArchivePreference(showArchived)
+  renderJobs()
+})
+todoExportButton.addEventListener('click', exportTodoCalendar)
 openFormButton.addEventListener('click', openNewJobForm)
 closeFormButton.addEventListener('click', cancelJobForm)
 formBackdrop.addEventListener('click', cancelJobForm)

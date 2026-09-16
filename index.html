@@ -6,9 +6,9 @@
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self'; connect-src 'self' https://*.supabase.co; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests">
   <title>취업 공채 대시보드</title>
-  <link rel="stylesheet" href="style.css?v=20260914-assessment-stage">
+  <link rel="stylesheet" href="style.css?v=20260916-assessment-type">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.min.js" integrity="sha384-yiVMs0R/Jyz7OhoXa/DsEMUSBLjEhr/QJta2ONO+zB6I8/GmNg/7AUFrZmAJV7KV" crossorigin="anonymous"></script>
-  <script type="module" src="app.js?v=20260914-assessment-stage"></script>
+  <script type="module" src="app.js?v=20260916-assessment-type"></script>
 </head>
 <body>
   <header class="page-header">
@@ -91,6 +91,15 @@
                 <small>지원서 작성을 마쳤다면 체크하세요.</small>
               </span>
             </label>
+          </div>
+          <div class="form-row">
+            <label for="assessmentTypeInput">AI 역량검사 / 인적성 유형</label>
+            <select id="assessmentTypeInput">
+              <option value="미지정" selected>미지정 (구분 없음)</option>
+              <option value="AI 역검">AI 역검</option>
+              <option value="인적성">인적성</option>
+            </select>
+            <small class="form-hint">어느 쪽인지 알면 골라 주세요. 현황판에 그 이름으로 표시됩니다.</small>
           </div>
           <div class="form-row">
             <label for="assessmentDateInput">AI 역량검사 / 인적성 마감일시</label>

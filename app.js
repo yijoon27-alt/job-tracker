@@ -2,7 +2,7 @@ import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js'
 
 const LEGACY_STORAGE_KEY = 'excelJobs'
 const LEGACY_BACKUP_PREFIX = 'excelJobsBackup:'
-const DB_COLUMNS = 'id, company, role, deadline, deadline_time, link, jd, preferred, cover_letter, document_prepared, assessment_deadline, assessment_time, assessment_done, assessment_result, doc_status, interview1_date, interview1_result, interview2_date, interview2_result, final_status, created_at, updated_at'
+const DB_COLUMNS = 'id, company, role, deadline, deadline_time, link, jd, preferred, cover_letter, document_prepared, assessment_deadline, assessment_time, assessment_done, assessment_type, assessment_result, doc_status, interview1_date, interview1_result, interview2_date, interview2_result, final_status, created_at, updated_at'
 
 const DOCUMENT_PREPARED_FLAG = {
   column: 'document_prepared',
@@ -20,6 +20,7 @@ const ASSESSMENT_DONE_FLAG = {
 }
 
 const DOC_STATUSES = ['대기', '합격', '탈락']
+const ASSESSMENT_TYPES = ['미지정', 'AI 역검', '인적성']
 const ASSESSMENT_RESULTS = ['미대상', '대기', '합격', '탈락']
 const INTERVIEW_STATUSES = ['미대상', '대기', '합격', '탈락']
 const FINAL_STATUSES = ['진행중', '최종합격', '최종탈락']
@@ -52,6 +53,7 @@ const roleInput = document.querySelector('#roleInput')
 const dateInput = document.querySelector('#dateInput')
 const deadlineTimeInput = document.querySelector('#deadlineTimeInput')
 const documentPreparedInput = document.querySelector('#documentPreparedInput')
+const assessmentTypeInput = document.querySelector('#assessmentTypeInput')
 const assessmentDateInput = document.querySelector('#assessmentDateInput')
 const assessmentTimeInput = document.querySelector('#assessmentTimeInput')
 const assessmentDoneInput = document.querySelector('#assessmentDoneInput')
@@ -272,7 +274,7 @@ async function loadJobs() {
   if (error) {
     jobs = []
     renderJobs()
-    const schemaNeedsUpdate = String(error.message || '').includes('assessment_result')
+    const schemaNeedsUpdate = isSchemaOutdated(error.message)
     showAppMessage(schemaNeedsUpdate
       ? '최신 DB 업데이트가 필요합니다. Supabase SQL Editor에서 supabase-schema.sql 전체를 실행해 주세요.'
       : '데이터를 불러오지 못했습니다. Supabase SQL 설정과 인터넷 연결을 확인해 주세요.', true)
@@ -300,6 +302,7 @@ function fromDatabaseJob(row) {
     assessmentDate: row.assessment_deadline || '',
     assessmentTime: toTimeInputValue(row.assessment_time),
     assessmentDone: row.assessment_done === true,
+    assessmentType: allowedValue(row.assessment_type, ASSESSMENT_TYPES, '미지정'),
     assessmentResult: allowedValue(row.assessment_result, ASSESSMENT_RESULTS, '미대상'),
     docStatus: row.doc_status,
     interview1Date: row.interview1_date || '',
@@ -315,7 +318,9 @@ function fromDatabaseJob(row) {
 function getFormJobData() {
   const assessmentDate = assessmentDateInput.value
   const selectedResult = allowedValue(assessmentResultInput.value, ASSESSMENT_RESULTS, '미대상')
+  const selectedType = allowedValue(assessmentTypeInput.value, ASSESSMENT_TYPES, '미지정')
   // 인적성 전형 유무는 마감일이 아니라 결과값으로도 선언할 수 있다.
+  // 유형은 표시 라벨만 정하므로 전형 유무 판정에는 넣지 않는다.
   const hasAssessment = Boolean(assessmentDate) || selectedResult !== '미대상'
   const assessmentResult = hasAssessment
     ? (selectedResult === '미대상' ? '대기' : selectedResult)
@@ -336,6 +341,7 @@ function getFormJobData() {
     assessment_done: hasAssessment
       ? assessmentDoneInput.checked || ['합격', '탈락'].includes(assessmentResult)
       : false,
+    assessment_type: hasAssessment ? selectedType : '미지정',
     assessment_result: assessmentResult,
     doc_status: docStatusInput.value,
     interview1_date: interview1Date.value || null,
@@ -390,7 +396,7 @@ jobForm.addEventListener('submit', async (event) => {
 
   setJobFormBusy(false)
   if (result.error) {
-    const schemaNeedsUpdate = String(result.error.message || '').includes('assessment_result')
+    const schemaNeedsUpdate = isSchemaOutdated(result.error.message)
     showAppMessage(schemaNeedsUpdate
       ? '최신 DB 업데이트가 필요합니다. Supabase SQL Editor에서 supabase-schema.sql 전체를 실행해 주세요.'
       : '저장하지 못했습니다. 입력 내용과 인터넷 연결을 확인해 주세요.', true)
@@ -526,6 +532,26 @@ function compareJobsByDeadline(firstJob, secondJob) {
   return String(firstJob.createdAt || '').localeCompare(String(secondJob.createdAt || ''))
 }
 
+// 유형(AI 역검 / 인적성)에 따라 화면에 쓸 이름만 바꾼다. 전형 판정에는 쓰지 않는다.
+// 유형을 고르지 않은 공고는 기존과 같이 둘을 함께 적은 이름을 쓴다.
+function assessmentLabel(job) {
+  return job.assessmentType === 'AI 역검' || job.assessmentType === '인적성'
+    ? job.assessmentType
+    : 'AI 역검·인적성'
+}
+
+function assessmentTimelineLabel(job) {
+  return job.assessmentType === 'AI 역검' || job.assessmentType === '인적성'
+    ? job.assessmentType
+    : 'AI/인적성'
+}
+
+function assessmentBadgePrefix(job) {
+  if (job.assessmentType === 'AI 역검') return '역검'
+  if (job.assessmentType === '인적성') return '인적성'
+  return '검사'
+}
+
 // 인적성 전형이 있는 공고인지. 마감일을 안 넣어도 결과만 기록하면 전형으로 인정한다.
 function hasAssessmentStage(job) {
   return Boolean(job.assessmentDate) || job.assessmentResult !== '미대상'
@@ -633,7 +659,7 @@ function createAssessmentBlock(job) {
   const checkbox = document.createElement('input')
   checkbox.type = 'checkbox'
   checkbox.checked = job.assessmentDone
-  checkbox.setAttribute('aria-label', `${job.company} AI 역량검사 응시 완료`)
+  checkbox.setAttribute('aria-label', `${job.company} ${assessmentLabel(job)} 응시 완료`)
   checkbox.addEventListener('change', () => {
     void updateJobFlag(job, ASSESSMENT_DONE_FLAG, checkbox)
   })
@@ -656,11 +682,12 @@ function createAssessmentBlock(job) {
 }
 
 function assessmentBadgeText(job) {
-  if (job.assessmentDone) return '검사 완료'
-  if (isDeadlinePassed(job.assessmentDate, job.assessmentTime)) return '검사 마감'
+  const prefix = assessmentBadgePrefix(job)
+  if (job.assessmentDone) return `${prefix} 완료`
+  if (isDeadlinePassed(job.assessmentDate, job.assessmentTime)) return `${prefix} 마감`
   const diffDays = daysUntilDeadline(job.assessmentDate)
-  if (diffDays === null) return '검사'
-  return diffDays === 0 ? '검사 D-Day' : `검사 D-${diffDays}`
+  if (diffDays === null) return prefix
+  return diffDays === 0 ? `${prefix} D-Day` : `${prefix} D-${diffDays}`
 }
 
 function assessmentBadgeClassName(job) {
@@ -909,7 +936,15 @@ function getPendingResultConfig(job) {
   }
   if (job.docStatus !== '합격') return null
 
-  if (hasAssessmentStage(job) && job.assessmentResult === '대기') return RESULT_CONFIGS.assessment
+  if (hasAssessmentStage(job) && job.assessmentResult === '대기') {
+    // 라벨은 공고 유형에 맞춰 덮어쓴다. timelineLabel 은 getDisplayStages 와 같은 값이어야
+    // 타임라인 칩 클릭이 결과 입력 메뉴로 연결된다.
+    return {
+      ...RESULT_CONFIGS.assessment,
+      label: assessmentLabel(job),
+      timelineLabel: assessmentTimelineLabel(job)
+    }
+  }
   if (!assessmentGatePassed(job)) return null
 
   if (job.interview1Result === '대기') return RESULT_CONFIGS.interview1
@@ -980,7 +1015,7 @@ async function updateJobResult(job, resultConfig, selectedValue, select) {
 function getCurrentStage(job) {
   if (job.docStatus === '탈락') return { label: '서류 탈락 · 전형 종료', className: 'is-failure' }
   if (job.assessmentResult === '탈락') {
-    return { label: 'AI 역검·인적성 탈락 · 전형 종료', className: 'is-failure' }
+    return { label: `${assessmentLabel(job)} 탈락 · 전형 종료`, className: 'is-failure' }
   }
   if (job.interview1Result === '탈락') return { label: '1차 면접 탈락 · 전형 종료', className: 'is-failure' }
   if (job.interview2Result === '탈락') return { label: '2차 면접 탈락 · 전형 종료', className: 'is-failure' }
@@ -988,12 +1023,12 @@ function getCurrentStage(job) {
   if (job.finalStatus === '최종합격') return { label: '최종 합격', className: 'is-success' }
   if (job.docStatus === '합격' && hasAssessmentStage(job) && job.assessmentResult !== '합격') {
     if (job.assessmentDone) {
-      return { label: 'AI 역검·인적성 결과 대기', className: 'is-waiting' }
+      return { label: `${assessmentLabel(job)} 결과 대기`, className: 'is-waiting' }
     }
     if (isDeadlinePassed(job.assessmentDate, job.assessmentTime)) {
-      return { label: 'AI 역검·인적성 마감 · 미응시', className: 'is-failure' }
+      return { label: `${assessmentLabel(job)} 마감 · 미응시`, className: 'is-failure' }
     }
-    return { label: stageWithDate('AI 역검·인적성 응시 대기', job.assessmentDate), className: 'is-progress' }
+    return { label: stageWithDate(`${assessmentLabel(job)} 응시 대기`, job.assessmentDate), className: 'is-progress' }
   }
   if (job.interview2Result === '대기') {
     return { label: stageWithDate('2차 면접 진행', job.interview2Date), className: 'is-progress' }
@@ -1019,7 +1054,7 @@ function getDisplayStages(job) {
 
   if (hasAssessmentStage(job)) {
     stages.push({
-      label: 'AI/인적성',
+      label: assessmentTimelineLabel(job),
       status: assessmentStageStatus(job),
       date: job.assessmentDate,
       isAssessment: true
@@ -1199,6 +1234,7 @@ function startEdit(id) {
   documentPreparedInput.checked = target.documentPrepared
   assessmentDateInput.value = target.assessmentDate
   assessmentTimeInput.value = target.assessmentTime
+  assessmentTypeInput.value = target.assessmentType
   assessmentDoneInput.checked = target.assessmentDone
   assessmentResultInput.value = target.assessmentResult
   linkInput.value = target.link
@@ -1409,10 +1445,17 @@ function syncAssessmentResultToDate() {
     assessmentResultInput.value = '미대상'
     assessmentTimeInput.value = ''
     assessmentDoneInput.checked = false
+    assessmentTypeInput.value = '미지정'
   }
 }
 
 assessmentDateInput.addEventListener('input', syncAssessmentResultToDate)
+
+// 유형을 고르는 것도 전형이 있다는 선언이다. 마감일 입력과 같은 방식으로 결과를 '대기'로 올린다.
+assessmentTypeInput.addEventListener('change', () => {
+  if (assessmentTypeInput.value === '미지정') return
+  if (assessmentResultInput.value === '미대상') assessmentResultInput.value = '대기'
+})
 
 assessmentDoneInput.addEventListener('change', () => {
   if (assessmentDoneInput.checked && assessmentResultInput.value === '미대상') {
@@ -1426,7 +1469,11 @@ assessmentDoneInput.addEventListener('change', () => {
 
 assessmentResultInput.addEventListener('change', () => {
   if (['합격', '탈락'].includes(assessmentResultInput.value)) assessmentDoneInput.checked = true
-  if (assessmentResultInput.value === '미대상') assessmentDoneInput.checked = false
+  if (assessmentResultInput.value === '미대상') {
+    assessmentDoneInput.checked = false
+    // 마감일까지 비어 있으면 전형 자체가 없는 것이므로 유형 선택도 되돌린다.
+    if (!assessmentDateInput.value) assessmentTypeInput.value = '미지정'
+  }
 })
 
 function readLegacyJobs() {
@@ -1534,6 +1581,12 @@ function cleanText(value, maxLength) {
   return String(value ?? '').slice(0, maxLength)
 }
 
+// 새 컬럼이 아직 DB에 없을 때 나오는 오류인지. 컬럼을 추가할 때마다 여기 이름이 늘지 않도록
+// assessment_ 계열 전체를 한 번에 본다.
+function isSchemaOutdated(message) {
+  return /assessment_[a-z]+/.test(String(message || ''))
+}
+
 function allowedValue(value, allowed, fallback) {
   return allowed.includes(value) ? value : fallback
 }
@@ -1572,6 +1625,7 @@ exportButton.addEventListener('click', () => {
     documentPrepared: job.documentPrepared,
     assessmentDate: job.assessmentDate,
     assessmentTime: job.assessmentTime,
+    assessmentType: job.assessmentType,
     assessmentDone: job.assessmentDone,
     assessmentResult: job.assessmentResult,
     docStatus: job.docStatus,

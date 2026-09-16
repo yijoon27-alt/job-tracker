@@ -14,7 +14,8 @@
 - 2026-09-07 3차 작업으로 서류 마감 시각, AI 역량검사/인적성 마감일시와 응시 완료 체크, 할 일이 남은 공고 상단 정렬을 추가했다. 같은 날 시각 입력 칸을 브라우저 시간 위젯에서 직접 입력 방식으로 바꿨다.
 - 2026-09-11 AI 역량검사/인적성 마감이 있는 공고는 전형 흐름에도 `서류 → AI/인적성 → 1차 → 2차 → 최종` 순서로 표시되도록 연결하고, 응시 완료와 합격 여부를 분리했다. 역검 합격 전에는 1차 면접 준비로 넘어가지 않는다.
 - 2026-09-14 4차 작업으로 AI 역량검사/인적성을 1차·2차 면접과 동등한 정식 전형으로 승격했다. `assessment_result`가 `미대상 / 대기 / 합격 / 탈락` 네 값을 갖게 되어, 마감일을 입력하지 않은 공고도 인적성 합격·탈락을 기록할 수 있다. 같은 날 현황판 `결과 입력`이 전형 순서(서류 → 인적성 → 1차 → 2차 → 최종)를 정확히 따라가도록 고쳤다.
-- GitHub 배포와 별개로 최신 `supabase-schema.sql`이 Supabase SQL Editor에 적용되어 있어야 한다. 현재 코드는 `document_prepared`, `deadline_time`, `assessment_deadline`, `assessment_time`, `assessment_done`, `assessment_result` 필드를 모두 전제로 하며, `assessment_result`는 `미대상`을 허용하는 최신 제약조건이어야 한다.
+- 2026-09-16 5차 작업으로 AI 역량검사와 인적성을 구분하는 `assessment_type` 필드를 추가했다. `미지정 / AI 역검 / 인적성` 세 값이며 **표시 라벨만 바꾼다.** 전형 유무 판정, 정렬, 요약 집계는 전혀 건드리지 않았다.
+- GitHub 배포와 별개로 최신 `supabase-schema.sql`이 Supabase SQL Editor에 적용되어 있어야 한다. 현재 코드는 `document_prepared`, `deadline_time`, `assessment_deadline`, `assessment_time`, `assessment_done`, `assessment_type`, `assessment_result` 필드를 모두 전제로 하며, `assessment_result`는 `미대상`을 허용하는 최신 제약조건이어야 한다.
 
 ## 현재 현황판 UI/UX
 
@@ -34,6 +35,9 @@
 - `normalizeTimeText()`는 `18:00`, `1800`, `18`, `9:30`, `930`, `오후 3시`, `3시30분`, 전각 숫자까지 받아들이고, `24:00`이나 `18:60` 같은 값은 거부한다. 빈 값은 `''`, 거부는 `null`, 성공은 `'HH:MM'`을 돌려준다. 칸에서 포커스가 빠지면 입력한 값을 `HH:MM` 형태로 다시 써 준다.
 - `마감` 칸 아래쪽의 AI 역량검사/인적성 배지는 마감일시를 입력한 공고에만 표시한다. 전형 유무와는 별개이며, 마감일 없이 결과만 기록한 공고에는 배지가 없고 전형 흐름에만 나타난다. 배지는 `검사 D-n`, `검사 D-Day`, `검사 마감`, `검사 완료` 네 가지이고 D-3 이하는 빨강으로 강조한다.
 - 역량검사 `미응시 / 응시 완료` 체크도 현황판에서 바로 누르면 Supabase에 즉시 저장된다.
+- 인적성 전형의 표시 이름은 `assessment_type`이 정하며 `assessmentLabel()`, `assessmentTimelineLabel()`, `assessmentBadgePrefix()` 세 헬퍼가 담당한다. `미지정`이면 각각 `AI 역검·인적성`, `AI/인적성`, `검사`를 돌려주어 기존 화면과 완전히 같다. `AI 역검`이면 `AI 역검`·`AI 역검`·`역검`, `인적성`이면 세 자리 모두 `인적성`이다.
+- **유형은 라벨 전용이다. `hasAssessmentStage()`에 절대 넣지 말 것.** 넣으면 유형만 고르고 결과가 `미대상`인 공고가 `hasAssessmentStage()=true` + `assessmentGatePassed()=false`가 되어 `getPendingResultConfig()`가 `null`을 반환한다. 결과 입력 메뉴가 사라져 합격·탈락을 넣을 수도, 1차 면접으로 넘어갈 수도 없다. 대신 폼에서 유형을 고르면 결과를 `대기`로 올려 기존 흐름을 타게 한다.
+- `createProcessCell()`은 `pendingResultConfig.timelineLabel === stage.label` **문자열 비교**로 칩과 결과 입력 메뉴를 연결한다. 그래서 `getPendingResultConfig()`가 인적성을 고를 때 `RESULT_CONFIGS.assessment`를 그대로 주지 않고 `assessmentLabel(job)`·`assessmentTimelineLabel(job)`을 덮어쓴 사본을 돌려준다. `getDisplayStages()`도 같은 헬퍼를 쓰므로 두 문자열이 항상 일치한다. 덕분에 `resultConfig.label`을 쓰는 다섯 곳(aria-label, 탈락 확인창, 토스트 3종)이 저절로 유형별 문구가 된다. `RESULT_CONFIGS.assessment`에 남은 정적 라벨은 미지정 공고용 폴백이다.
 - 인적성 전형이 있는 공고는 전형 흐름에서 서류와 1차 면접 사이에 `AI/인적성` 단계를 표시한다. 전형 유무는 `hasAssessmentStage()`가 판정하며 기준은 **마감일 입력 또는 `assessment_result`가 `미대상`이 아닌 것**이다. 마감일을 몰라도 결과만 기록하면 전형으로 인정한다. `미응시 → 결과대기 → 합격/탈락`을 구분하며, 역검 합격으로 저장해야 현재 전형이 `1차 면접 준비`로 넘어간다. 기한이 지난 미응시 건은 `마감`으로 표시한다.
 - 정렬은 `종료 여부 → 할 일 남음 → 진행 중 여부 → 마감 지남 → 다음 마감일시` 순으로 판단한다. 같은 날짜는 마감 시각이 빠른 공고가 먼저이고, 시각 미입력은 그날 23:59:59로 간주한다. 실제로 해야 할 마감이 남은 공고가 먼저이고, 그다음에는 서류 합격 후 역검·면접을 진행 중인 공고를 모은다.
 - `hasPendingWork()`가 참인 공고를 맨 위에 모은다. 서류 미작성이면서 서류 마감이 남았거나, 서류는 다 썼지만 역량검사 마감이 남았는데 아직 미응시인 경우다. 마감이 이미 지난 미작성 공고는 할 일이 아니라 놓친 공고이므로 여기서 빠진다.
@@ -50,7 +54,7 @@
 - `getPendingResultConfig()`가 지금 결과를 넣을 수 있는 단계 하나를 고른다. 서류 → 인적성 → 1차 → 2차 → 최종 순서를 그대로 따라가며, 명시적으로 `대기`인 단계를 먼저 찾고 없으면 앞 단계를 통과한 첫 `미대상` 단계를 제안한다. 그래서 1차가 기본값 `미대상`이어도 수정 패널을 열지 않고 합격·탈락을 넣을 수 있다. 다만 1차가 `미대상`이고 2차가 `대기`인 공고는 1차를 건너뛰고 2차를 가리킨다. 탈락은 확인창을 거치며 저장 성공 시 목록·정렬·요약을 다시 렌더링한다.
 - 결과 입력이 가능한 현재 단계의 타임라인 칩은 클릭 가능한 버튼으로 렌더링하고, 클릭하면 같은 `결과 입력` 선택 메뉴를 연다. 이때 상태가 `—`이면 점선 테두리와 함께 `미정`으로 표시한다. 결과 입력 대상이 아닌 `—` 단계는 비활성 표시를 유지한다.
 - 데스크톱에서는 압축형 표, 폭 720px 이하에서는 기업별 카드 형태로 표시한다.
-- CSS와 JavaScript에는 `20260914-assessment-stage` 캐시 버전이 적용되어 있다.
+- CSS와 JavaScript에는 `20260916-assessment-type` 캐시 버전이 적용되어 있다.
 
 ## 요약 통계 계산 기준
 
@@ -69,18 +73,19 @@
 - 기본 정보: `company`, `role`, `deadline`, `deadline_time`, `link`
 - 지원 자료: `jd`, `preferred`, `cover_letter`
 - 작성 여부: `document_prepared boolean not null default false`
-- AI 역량검사/인적성: `assessment_deadline date`, `assessment_time time`, `assessment_done boolean not null default false`, `assessment_result`
+- AI 역량검사/인적성: `assessment_deadline date`, `assessment_time time`, `assessment_done boolean not null default false`, `assessment_type`, `assessment_result`
 - 전형 상태: `doc_status`, `interview1_date`, `interview1_result`, `interview2_date`, `interview2_result`, `final_status`
 - 소유권과 기록: `user_id`, `legacy_id`, `created_at`, `updated_at`
 
 허용 상태값은 다음과 같다.
 
 - 서류: `대기`, `합격`, `탈락`
+- AI 역량검사/인적성 유형: `미지정`, `AI 역검`, `인적성` (기본값 `미지정`, 표시 라벨 전용)
 - AI 역량검사/인적성 결과: `미대상`, `대기`, `합격`, `탈락` (1·2차 면접과 동일한 4단계)
 - 1·2차 면접: `미대상`, `대기`, `합격`, `탈락`
 - 최종: `진행중`, `최종합격`, `최종탈락`
 
-`deadline_time`, `assessment_deadline`, `assessment_time`은 모두 null 허용이고 `assessment_done`은 기본값이 `false`다. `assessment_result`는 기본값이 `미대상`이다. 마이그레이션은 두 단계로 나뉜다. 먼저 컬럼이 없던 설치에 컬럼을 추가하면서 이미 1차 이후로 진행한 공고를 `합격`으로 보정하고, 그다음 제약조건을 4값으로 교체하면서 마감일도 응시 기록도 없는 잔여 `대기` 행만 `미대상`으로 정리한다. 제약조건 이름은 설치 경로에 따라 다를 수 있어 `pg_constraint`에서 찾아 드롭한 뒤 `jobs_assessment_result_allowed`로 다시 건다.
+`deadline_time`, `assessment_deadline`, `assessment_time`은 모두 null 허용이고 `assessment_done`은 기본값이 `false`, `assessment_type`은 기본값이 `미지정`이다. `assessment_type`의 제약조건도 `assessment_result`와 같은 do-block 패턴으로 `jobs_assessment_type_allowed` 이름을 고정해 다시 건다. 새 컬럼 이름에 `assessment_result`가 부분 문자열로 들어가면 기존 do-block의 `like '%assessment_result%'`에 걸려 엉뚱한 제약조건이 드롭되므로 주의한다. `assessment_result`는 기본값이 `미대상`이다. 마이그레이션은 두 단계로 나뉜다. 먼저 컬럼이 없던 설치에 컬럼을 추가하면서 이미 1차 이후로 진행한 공고를 `합격`으로 보정하고, 그다음 제약조건을 4값으로 교체하면서 마감일도 응시 기록도 없는 잔여 `대기` 행만 `미대상`으로 정리한다. 제약조건 이름은 설치 경로에 따라 다를 수 있어 `pg_constraint`에서 찾아 드롭한 뒤 `jobs_assessment_result_allowed`로 다시 건다.
 
 `supabase-schema.sql`은 기존 테이블에 `document_prepared`가 없을 때만 필드를 추가한다. 필드 추가 시 기존 기록 중 자기소개서가 있거나 전형 단계가 이미 진행된 기록은 작성 완료로 한 번 보정한다. 스크립트를 다시 실행해도 기존 지원 기록을 삭제하지 않는다.
 
@@ -153,5 +158,12 @@ DB보다 웹 코드를 먼저 배포하면 `DB_COLUMNS`에 있는 열을 조회�
 - `getPendingResultConfig()`를 실제 코드에서 떼어내 22개 케이스로 검증. 1·2차가 모두 `대기`일 때 2차를 먼저 고르던 순서 버그를 발견해 수정했고, `1차 미대상 + 2차 대기`인 공고가 계속 2차를 가리키는지도 함께 확인
 - 마감일 없이 인적성 결과만 저장한 공고가 전형 흐름·현재 전형·탈락 판정·진행 중 집계에서 모두 정상 동작하는지 검증
 - 인적성이 없는 공고(`미대상`)의 타임라인이 기존과 같은 `서류 → 1차 → 2차 → 최종` 4칸인지 회귀 확인
+
+- 2026-09-16 변경 코드의 JavaScript 구문 검사와 DOM ID 재대조
+- `assessment_type`이 `DB_COLUMNS`, `getFormJobData`, SQL `grant insert`, SQL `grant update` 네 곳에 모두 있는지 대조
+- 허용값 `미지정 / AI 역검 / 인적성`이 HTML `<option>`, JS `ASSESSMENT_TYPES`, SQL check 세 곳에서 일치하는지 대조
+- 라벨 헬퍼 3종을 실제 코드에서 떼어내 3유형 × 배지 5상태로 검증하고, 이상값 5종이 모두 `미지정`으로 폴백하는지 확인
+- `getPendingResultConfig().timelineLabel`과 `getDisplayStages()`의 인적성 칩 라벨이 3유형 모두에서 일치하는지 검증(칩 클릭 연결 불변식). 유형만 고르고 결과가 `미대상`인 공고가 기존과 같은 4칸 타임라인을 유지하는지, 역검 합격 후 1차 면접으로 넘어가는지도 함께 확인
+- `isSchemaOutdated()`를 오류 메시지 6종으로 검증
 
 실제 운영 Supabase에서 최신 SQL이 실행되었는지와 GitHub Pages에서 새 UI가 표시되는지는 배포 후 브라우저에서 최종 확인한다.

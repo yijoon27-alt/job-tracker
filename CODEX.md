@@ -17,6 +17,7 @@
 - 2026-09-16 5차 작업으로 AI 역량검사와 인적성을 구분하는 `assessment_type` 필드를 추가했다. `미지정 / AI 역검 / 인적성` 세 값이며 **표시 라벨만 바꾼다.** 전형 유무 판정, 정렬, 요약 집계는 전혀 건드리지 않았다.
 - 2026-09-17 6차 작업으로 `이번 주 할 일` 배너, 면접일을 반영한 정렬, JD·자소서 전문 검색, 종료 공고 접기를 추가했다. **새 DB 컬럼이 없어 `supabase-schema.sql`은 그대로다.** 기존 `interview1_date` / `interview2_date`를 정렬에 쓰기 시작했을 뿐이다.
 - 2026-09-18 7차 작업으로 공고별 특이사항 메모(`notes`)를 추가했다. **새 컬럼이 생기므로 SQL 실행이 먼저다.** 현황판 `현재 전형` 칸에서 인라인으로 쓰고 blur 시 자동 저장한다.
+- 2026-09-17 8차 작업으로 현황판 표의 행 높이를 129px → 100px로 줄였다. **DB 변경 없이 `style.css` 여백과 메모칸 높이 계산만 손댄 순수 레이아웃 작업이다.** 메모칸은 1줄로 시작해 내용만큼 자동으로 늘어난다.
 - GitHub 배포와 별개로 최신 `supabase-schema.sql`이 Supabase SQL Editor에 적용되어 있어야 한다. 현재 코드는 `document_prepared`, `deadline_time`, `assessment_deadline`, `assessment_time`, `assessment_done`, `assessment_type`, `assessment_result` 필드를 모두 전제로 하며, `assessment_result`는 `미대상`을 허용하는 최신 제약조건이어야 한다.
 
 ## 현재 현황판 UI/UX
@@ -66,7 +67,10 @@
 - 특이사항 메모는 `createNotesEditor()`가 `createProcessCell()` 끝에 붙인다. `saveJobNotes()`가 blur 시 **값이 달라졌을 때만** update 하고, 저장 후 `job.searchIndex`를 다시 만든다(메모도 검색 대상이라 갱신을 빠뜨리면 방금 쓴 메모가 검색되지 않는다). `Esc`는 되돌리기, `Cmd/Ctrl+Enter`는 즉시 저장이며, `Esc` 처리에서 `stopPropagation()`을 호출해 전역 단축키가 수정 패널을 닫지 않게 한다. 저장 실패 시 원래 값으로 되돌리고 스키마 안내를 띄운다.
 - 메모 입력칸은 `renderJobs()`마다 새로 만들어지므로 **저장 성공 뒤 `renderJobs()`를 호출하지 않는다.** 호출하면 편집 중인 칸이 교체되어 포커스와 입력이 끊긴다. 목록 정렬·집계에 영향을 주지 않는 필드라 다시 그릴 이유도 없다.
 - 모바일에서는 `.memo-input` 글자 크기를 16px로 키운다. 16px 미만이면 iOS 사파리가 포커스 시 화면을 확대한다.
-- CSS와 JavaScript에는 `20260918-notes` 캐시 버전이 적용되어 있다.
+- 메모칸은 `rows=1`로 시작해 `autosizeMemo()`가 내용 줄 수만큼 높이를 늘린다. `box-sizing: border-box`라 `scrollHeight`에 테두리가 빠지므로 `offsetHeight - clientHeight`만큼 더해주지 않으면 한 줄이 잘려 스크롤바가 생긴다. `max-height: 96px`에서 멈추고 그 뒤로는 안쪽 스크롤이며, 인라인 `height`와 충돌하므로 `.memo-input`은 `resize: none`이다(전역 `textarea` 규칙의 `resize: vertical`을 덮어쓴다).
+- 높이 계산은 `scrollHeight`를 읽어야 해서 **행이 DOM에 붙은 뒤**여야 한다. `createTableRow()`가 만드는 `tr`은 아직 떨어져 있으므로 `renderJobs()`의 append 루프가 끝난 다음 `autosizeAllMemos()`를 한 번 돌린다. 창 폭이 바뀌면 줄바꿈 위치와 글자 크기(모바일 16px)가 달라져 인라인 높이가 낡은 값이 되므로 `window` `resize`에서도 다시 잰다.
+- 행 높이는 `tr`·`td`에 명시값이 없고 **가장 높은 `.process-cell`(현재 전형 + 단계 칩 + 메모)의 콘텐츠 높이**가 그대로 행 높이가 된다. 2026-09-17에 td padding을 `8px 10px`로, `.current-stage-header` margin-bottom과 `.memo-box` margin-top을 6px로 줄이고 메모를 1줄로 바꿔 일반 행을 129px → 100px로 압축했다. 단계 칩·링크 칩 크기는 클릭 타겟 유지를 위해 건드리지 않았다. `@media (max-width: 720px)` 블록이 카드 뷰용으로 `td { padding: 12px }`를 다시 선언하므로 모바일은 영향받지 않는다.
+- CSS와 JavaScript에는 `20260917-compact-rows` 캐시 버전이 적용되어 있다.
 
 ## 요약 통계 계산 기준
 

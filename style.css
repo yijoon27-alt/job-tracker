@@ -730,7 +730,7 @@ button {
 
 .excel-table th,
 .excel-table td {
-  padding: 12px;
+  padding: 8px 10px;
   border: 1px solid #e2e8f0;
   vertical-align: top;
 }
@@ -975,7 +975,7 @@ button {
 }
 
 .current-stage-header {
-  margin-bottom: 8px;
+  margin-bottom: 6px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1105,7 +1105,7 @@ button {
 
 /* 현황판에서 바로 쓰는 특이사항·비고 메모 */
 .memo-box {
-  margin-top: 10px;
+  margin-top: 6px;
 }
 
 .memo-input {
@@ -1117,7 +1117,11 @@ button {
   border-radius: 7px;
   font-size: 10px;
   line-height: 1.5;
-  resize: vertical;
+  /* 한 줄로 시작해 내용만큼 늘어난다. 높이는 autosizeMemo 가 인라인으로 넣으므로
+     수동 드래그(resize)와 충돌하지 않게 끄고, 너무 길어지면 안쪽에서 스크롤시킨다 */
+  max-height: 96px;
+  overflow-y: auto;
+  resize: none;
 }
 
 .memo-input::placeholder {

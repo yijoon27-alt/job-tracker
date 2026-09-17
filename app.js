@@ -524,7 +524,19 @@ function renderJobs() {
   for (const job of filteredJobs) {
     jobTableBody.appendChild(createTableRow(job))
   }
+
+  autosizeAllMemos()
 }
+
+// 메모칸 높이는 셀이 DOM 에 붙은 뒤라야 scrollHeight 로 잴 수 있어 렌더 끝에 한 번 돌린다.
+// 창 폭이 바뀌면 줄바꿈 위치와 글자 크기(모바일 16px)가 달라지므로 그때도 다시 잰다.
+function autosizeAllMemos() {
+  for (const field of jobTableBody.querySelectorAll('.memo-input')) {
+    autosizeMemo(field)
+  }
+}
+
+window.addEventListener('resize', autosizeAllMemos)
 
 function renderSummary() {
   const totalCount = jobs.length
@@ -1174,12 +1186,15 @@ function createNotesEditor(job) {
 
   const field = document.createElement('textarea')
   field.className = 'memo-input'
-  field.rows = 2
+  field.rows = 1
   field.maxLength = NOTES_MAX_LENGTH
   field.value = job.notes
   field.placeholder = '특이사항·비고 메모'
   field.setAttribute('aria-label', `${job.company} 특이사항 메모`)
 
+  field.addEventListener('input', () => {
+    autosizeMemo(field)
+  })
   field.addEventListener('blur', () => {
     void saveJobNotes(job, field)
   })
@@ -1187,6 +1202,7 @@ function createNotesEditor(job) {
     if (event.key === 'Escape') {
       event.stopPropagation()
       field.value = job.notes
+      autosizeMemo(field)
       field.blur()
       return
     }
@@ -1198,6 +1214,17 @@ function createNotesEditor(job) {
 
   wrapper.appendChild(field)
   return wrapper
+}
+
+// 메모칸을 내용 줄 수에 맞춰 늘린다. 한 줄로 시작해 빈 행은 짧게 유지하고,
+// 길어지면 CSS 의 max-height 에서 멈춰 안쪽 스크롤로 넘어간다.
+// scrollHeight 를 읽어야 하므로 반드시 DOM 에 붙은 뒤에 불러야 한다.
+function autosizeMemo(field) {
+  field.style.height = 'auto'
+  // box-sizing 이 border-box 라 height 에 테두리가 포함되는데 scrollHeight 는 빼고 재므로,
+  // 그만큼 더해주지 않으면 한 줄이 2px 잘려 스크롤바가 생긴다
+  const borderHeight = field.offsetHeight - field.clientHeight
+  field.style.height = `${field.scrollHeight + borderHeight}px`
 }
 
 async function saveJobNotes(job, field) {

@@ -663,9 +663,14 @@ function jobPeriod(job) {
 // 하나 저장하는 순간, 또는 실제로 27년이 되는 순간 탭이 저절로 생긴다.
 // 해가 바뀌어도 코드를 고칠 필요가 없고, 목록을 좁히지 않으므로 기존 기록이 숨지 않는다.
 function collectPeriodOptions() {
-  const codes = new Set([currentPeriod()])
+  const today = currentPeriod()
+  const codes = new Set([today])
   for (const job of jobs) codes.add(jobPeriod(job))
-  return [...codes].filter((code) => PERIOD_PATTERN.test(code)).sort().reverse()
+  const sorted = [...codes].filter((code) => PERIOD_PATTERN.test(code)).sort().reverse()
+  // 지금 속한 반기를 항상 맨 앞에 둔다. 나머지는 최신순이다.
+  // 단순 최신순이면 미래 마감 공고를 하나 등록하는 순간 그 반기가 앞으로 튀어나와
+  // 정작 지금 쓰고 있는 반기가 뒤로 밀린다. 기본 선택이기도 해서 맨 앞이 맞다.
+  return [today, ...sorted.filter((code) => code !== today)]
 }
 
 // 폼 드롭다운용 목록. 탭 목록에 '다음 반기'와 '지금 입력 중인 마감일의 반기'를 더한다.

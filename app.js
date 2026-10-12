@@ -2,7 +2,7 @@ import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './config.js'
 
 const LEGACY_STORAGE_KEY = 'excelJobs'
 const LEGACY_BACKUP_PREFIX = 'excelJobsBackup:'
-const DB_COLUMNS = 'id, company, role, deadline, deadline_time, link, jd, preferred, cover_letter, notes, document_prepared, assessment_deadline, assessment_time, assessment_done, assessment_type, assessment_result, doc_status, interview1_date, interview1_result, interview2_date, interview2_result, final_status, created_at, updated_at'
+const DB_COLUMNS = 'id, company, role, deadline, deadline_time, apply_period, link, jd, preferred, cover_letter, notes, document_prepared, assessment_deadline, assessment_time, assessment_done, assessment_type, assessment_result, doc_status, interview1_date, interview1_result, interview2_date, interview2_result, final_status, created_at, updated_at'
 
 const DOCUMENT_PREPARED_FLAG = {
   column: 'document_prepared',
@@ -20,9 +20,18 @@ const ASSESSMENT_DONE_FLAG = {
 }
 
 const ARCHIVE_VIEW_KEY = 'jobTracker:showArchived'
+const PERIOD_VIEW_KEY = 'jobTracker:applyPeriod'
 const TODO_WINDOW_DAYS = 7
 const NOTES_MAX_LENGTH = 2000
 const DEMO_HOSTS = ['localhost', '127.0.0.1']
+
+// 지원 시기(반기) 분류. 저장값은 정렬 가능한 'YYYY-H1' / 'YYYY-H2' 코드이고 화면 표기는 periodLabel() 이 만든다.
+// 고정 폭이라 단순 사전식 정렬이 곧 시간순이므로 탭·옵션 정렬에 별도 비교 함수가 필요 없다.
+const ALL_PERIODS = 'all'
+const AUTO_PERIOD = 'auto'
+const PERIOD_PATTERN = /^\d{4}-H[12]$/
+// 이 기능이 생기기 전에 저장된 모든 기록의 분류값. supabase-schema.sql 의 백필 값과 반드시 같아야 한다.
+const BASELINE_PERIOD = '2026-H2'
 
 const DOC_STATUSES = ['대기', '합격', '탈락']
 const ASSESSMENT_TYPES = ['미지정', 'AI 역검', '인적성']
@@ -57,6 +66,7 @@ const companyInput = document.querySelector('#companyInput')
 const roleInput = document.querySelector('#roleInput')
 const dateInput = document.querySelector('#dateInput')
 const deadlineTimeInput = document.querySelector('#deadlineTimeInput')
+const periodInput = document.querySelector('#periodInput')
 const documentPreparedInput = document.querySelector('#documentPreparedInput')
 const assessmentTypeInput = document.querySelector('#assessmentTypeInput')
 const assessmentDateInput = document.querySelector('#assessmentDateInput')
@@ -81,6 +91,7 @@ const preparedFilter = document.querySelector('#preparedFilter')
 const statusFilter = document.querySelector('#statusFilter')
 const countText = document.querySelector('#countText')
 const archiveToggle = document.querySelector('#archiveToggle')
+const periodTabs = document.querySelector('#periodTabs')
 const todoPanel = document.querySelector('#todoPanel')
 const todoCount = document.querySelector('#todoCount')
 const todoList = document.querySelector('#todoList')
@@ -113,6 +124,7 @@ let authViewVersion = 0
 let formReturnFocus = null
 let activeSummaryFilter = 'all'
 let showArchived = readArchivePreference()
+let activePeriod = readPeriodPreference()
 let demoMode = false
 
 initialize()
@@ -233,6 +245,7 @@ async function applySession(session) {
     currentUser = null
     jobs = []
     activeSummaryFilter = 'all'
+    activePeriod = currentPeriod()
     searchInput.value = ''
     preparedFilter.value = '전체'
     statusFilter.value = '전체'
@@ -339,6 +352,8 @@ function fromDatabaseJob(row) {
     role: row.role,
     date: row.deadline,
     deadlineTime: toTimeInputValue(row.deadline_time),
+    // 원본값을 그대로 둔다. 여기서 정규화하면 수정 폼이 '자동'과 '직접 지정'을 구분할 수 없다.
+    applyPeriod: row.apply_period || '',
     link: row.link || '',
     jd: row.jd || '',
     preferred: row.preferred || '',
@@ -388,10 +403,62 @@ function matchesKeyword(job, keyword) {
     || index.coverLetter.includes(keyword)
 }
 
+// 폼의 지원 시기 드롭다운. 첫 항목은 마감일을 따라가는 '자동'이고 나머지는 명시 선택이다.
+// 반기 목록이 데이터에 따라 변하므로 HTML 에 정적 <option> 을 두지 않고 여기서 채운다.
+function renderPeriodInputOptions() {
+  const previous = periodInput.value
+  const options = collectPeriodOptions()
+  periodInput.replaceChildren()
+
+  const auto = document.createElement('option')
+  auto.value = AUTO_PERIOD
+  periodInput.appendChild(auto)
+
+  for (const code of options) {
+    const option = document.createElement('option')
+    option.value = code
+    option.textContent = periodLabel(code)
+    periodInput.appendChild(option)
+  }
+
+  periodInput.value = [AUTO_PERIOD, ...options].includes(previous) ? previous : AUTO_PERIOD
+  updateAutoPeriodLabel()
+}
+
+// '자동' 항목의 문구만 마감일에 맞춰 다시 쓴다. 선택값은 건드리지 않는다.
+function updateAutoPeriodLabel() {
+  const autoOption = periodInput.options[0]
+  if (!autoOption || autoOption.value !== AUTO_PERIOD) return
+  const derived = periodFromDate(dateInput.value)
+  autoOption.textContent = derived
+    ? `자동 (마감일 기준: ${periodLabel(derived)})`
+    : '자동 (마감일 입력 시 결정)'
+}
+
+// 저장값이 마감일에서 자동으로 나오는 값과 같으면 '자동'을, 다르면 그 코드를 고른다.
+// '자동'으로 두면 나중에 마감일을 고쳤을 때 분류도 함께 따라간다.
+function selectFormPeriod(storedCode, deadlineValue) {
+  if (!PERIOD_PATTERN.test(storedCode) || storedCode === periodFromDate(deadlineValue)) {
+    periodInput.value = AUTO_PERIOD
+  } else {
+    periodInput.value = storedCode
+    // 목록에 없는 값을 넣으면 <select> 는 조용히 ''(선택 없음)이 되므로 자동으로 되돌린다.
+    if (periodInput.value !== storedCode) periodInput.value = AUTO_PERIOD
+  }
+  updateAutoPeriodLabel()
+}
+
+// 마감일을 바꾸면 '자동' 문구가 따라 움직인다. assessmentDateInput 과 같은 'input' 이벤트를 쓴다.
+dateInput.addEventListener('input', updateAutoPeriodLabel)
+
 function getFormJobData() {
   const assessmentDate = assessmentDateInput.value
   const selectedResult = allowedValue(assessmentResultInput.value, ASSESSMENT_RESULTS, '미대상')
   const selectedType = allowedValue(assessmentTypeInput.value, ASSESSMENT_TYPES, '미지정')
+  // 'auto' 면 마감일에서 유도한다. 마감일 칸이 required 라서 저장 시점에는 항상 유효한 코드가 나온다.
+  const selectedPeriod = PERIOD_PATTERN.test(periodInput.value)
+    ? periodInput.value
+    : periodFromDate(dateInput.value)
   // 인적성 전형 유무는 마감일이 아니라 결과값으로도 선언할 수 있다.
   // 유형은 표시 라벨만 정하므로 전형 유무 판정에는 넣지 않는다.
   const hasAssessment = Boolean(assessmentDate) || selectedResult !== '미대상'
@@ -404,6 +471,7 @@ function getFormJobData() {
     role: roleInput.value.trim(),
     deadline: dateInput.value,
     deadline_time: normalizeTimeText(deadlineTimeInput.value) || null,
+    apply_period: selectedPeriod,
     link: safeHttpUrl(linkInput.value.trim()),
     jd: jdInput.value,
     preferred: preferredInput.value,
@@ -458,10 +526,11 @@ jobForm.addEventListener('submit', async (event) => {
     const demoIndex = jobs.findIndex((job) => job.id === savedJob.id)
     if (demoIndex === -1) jobs.push(savedJob)
     else jobs[demoIndex] = savedJob
+    const demoPeriodNotice = followSavedJobPeriod(savedJob)
     renderJobs()
     resetForm()
     closeJobForm()
-    showAppMessage('미리보기 화면에만 반영했습니다. 실제로 저장되지는 않습니다.')
+    showAppMessage(`미리보기 화면에만 반영했습니다. 실제로 저장되지는 않습니다.${demoPeriodNotice}`)
     return
   }
 
@@ -499,11 +568,22 @@ jobForm.addEventListener('submit', async (event) => {
   if (targetIndex === -1) jobs.push(savedJob)
   else jobs[targetIndex] = savedJob
 
+  const periodNotice = followSavedJobPeriod(savedJob)
   renderJobs()
   resetForm()
   closeJobForm()
-  showAppMessage('안전하게 저장했습니다.')
+  showAppMessage(`안전하게 저장했습니다.${periodNotice}`)
 })
+
+// 지금 보고 있는 반기 탭 밖으로 저장된 공고는 목록에 나타나지 않아
+// '저장했습니다' 토스트만 뜨고 화면은 그대로여서 저장 실패처럼 읽힌다.
+// 저장한 공고가 속한 반기로 범위를 옮기고 어느 반기인지 알려 준다.
+function followSavedJobPeriod(savedJob) {
+  const savedPeriod = jobPeriod(savedJob)
+  if (activePeriod === ALL_PERIODS || savedPeriod === activePeriod) return ''
+  setActivePeriod(savedPeriod)
+  return ` ${periodLabel(savedPeriod)} 공고로 분류했습니다.`
+}
 
 function setJobFormBusy(isBusy) {
   submitButton.disabled = isBusy
@@ -512,9 +592,13 @@ function setJobFormBusy(isBusy) {
 }
 
 function renderJobs() {
+  // 탭을 먼저 그린다. 사라진 반기가 선택돼 있으면 여기서 '전체'로 보정되므로
+  // 그 보정이 아래 집계·목록보다 앞서야 같은 렌더 안에서 값이 일치한다.
+  renderPeriodTabs()
   const filteredJobs = getFilteredJobs()
   jobTableBody.replaceChildren()
   emptyMessage.hidden = filteredJobs.length > 0
+  if (!emptyMessage.hidden) emptyMessage.textContent = buildEmptyMessageText()
   countText.textContent = buildCountText(filteredJobs.length)
 
   renderSummary()
@@ -538,15 +622,67 @@ function autosizeAllMemos() {
 
 window.addEventListener('resize', autosizeAllMemos)
 
+// 서류 제출 마감일이 상·하반기 중 어디에 속하는지. 1~6월은 H1(상반기), 7~12월은 H2(하반기).
+function periodFromDate(dateString) {
+  const text = String(dateString ?? '')
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return ''
+  const month = Number(text.slice(5, 7))
+  if (month < 1 || month > 12) return ''
+  return `${text.slice(0, 4)}-H${month <= 6 ? 1 : 2}`
+}
+
+function periodLabel(code) {
+  if (!PERIOD_PATTERN.test(String(code ?? ''))) return '미분류'
+  return `${code.slice(2, 4)}년 ${code.endsWith('H1') ? '상반기' : '하반기'}`
+}
+
+function currentPeriod() {
+  const now = new Date()
+  return `${now.getFullYear()}-H${now.getMonth() < 6 ? 1 : 2}`
+}
+
+function nextPeriodOf(code) {
+  const year = Number(code.slice(0, 4))
+  return code.endsWith('H1') ? `${year}-H2` : `${year + 1}-H1`
+}
+
+// 집계와 목록에 쓰는 공고의 지원 시기.
+// 저장값이 비었거나 형식이 깨졌으면 마감일에서 되살려, 어떤 공고든 반드시 탭 하나에 속하게 한다.
+// 이 폴백이 '모든 반기 탭 건수의 합 === 전체 건수' 불변식을 보장한다.
+function jobPeriod(job) {
+  if (PERIOD_PATTERN.test(job.applyPeriod)) return job.applyPeriod
+  return periodFromDate(job.date) || BASELINE_PERIOD
+}
+
+// 탭과 폼 드롭다운에 보여줄 시기 목록. 데이터에 있는 시기 ∪ 오늘이 속한 시기 ∪ 다음 시기 ∪ 기준 시기.
+// 해가 바뀌어도 코드를 고칠 필요가 없고, 목록을 좁히지 않으므로 기존 기록이 숨지 않는다.
+function collectPeriodOptions() {
+  const today = currentPeriod()
+  const codes = new Set([BASELINE_PERIOD, today, nextPeriodOf(today)])
+  for (const job of jobs) codes.add(jobPeriod(job))
+  return [...codes].filter((code) => PERIOD_PATTERN.test(code)).sort().reverse()
+}
+
+// 지금 선택한 반기 범위. 요약 카드 5개와 현황판 목록이 모두 이 결과를 기준으로 계산된다.
+// '전체' 탭에서는 원본 배열을 그대로 돌려준다. 읽기 전용으로만 쓰므로 안전하지만
+// periodScopedJobs().sort(...) 처럼 제자리 변형을 하면 jobs 가 망가진다.
+function periodScopedJobs() {
+  if (activePeriod === ALL_PERIODS) return jobs
+  return jobs.filter((job) => jobPeriod(job) === activePeriod)
+}
+
+// 다섯 카드 모두 '선택한 반기 안의 전체 공고' 기준이다. 검색·필터·종료 접기와는 무관하다.
+// 반기 탭만이 이 모집단을 바꾼다.
 function renderSummary() {
-  const totalCount = jobs.length
-  const preparedJobs = jobs.filter((job) => job.documentPrepared)
+  const scopedJobs = periodScopedJobs()
+  const totalCount = scopedJobs.length
+  const preparedJobs = scopedJobs.filter((job) => job.documentPrepared)
   const preparedCount = preparedJobs.length
   const waitingCount = preparedJobs.filter((job) => job.docStatus === '대기').length
   const decidedDocuments = preparedJobs.filter((job) => ['합격', '탈락'].includes(job.docStatus))
   const passedDocuments = decidedDocuments.filter((job) => job.docStatus === '합격').length
   const documentPassRate = percentage(passedDocuments, decidedDocuments.length)
-  const ongoingCount = jobs.filter((job) => (
+  const ongoingCount = scopedJobs.filter((job) => (
     !isJobRejected(job)
     && job.finalStatus !== '최종합격'
     && isOngoingProcess(job)
@@ -564,17 +700,78 @@ function renderSummary() {
   summaryOngoingMeta.textContent = '서류 합격 이후 기준'
 }
 
+// 반기 탭. 옵션 목록을 데이터에서 유도하므로 렌더마다 다시 만든다.
+// 공고를 다 지워 사라진 반기가 선택돼 있으면 '전체'로 되돌린다.
+function renderPeriodTabs() {
+  const options = collectPeriodOptions()
+  if (jobs.length > 0 && activePeriod !== ALL_PERIODS && !options.includes(activePeriod)) {
+    setActivePeriod(ALL_PERIODS)
+  }
+
+  periodTabs.replaceChildren()
+  for (const code of [...options, ALL_PERIODS]) {
+    periodTabs.appendChild(createPeriodTab(code))
+  }
+}
+
+function createPeriodTab(code) {
+  const isActive = code === activePeriod
+  const tab = document.createElement('button')
+  tab.type = 'button'
+  tab.className = `period-tab${isActive ? ' is-active' : ''}`
+  tab.dataset.period = code
+  tab.setAttribute('aria-pressed', String(isActive))
+  tab.textContent = code === ALL_PERIODS ? '전체' : periodLabel(code)
+
+  // 탭의 건수는 검색·필터·종료 접기와 무관한 그 반기의 전체 건수다. 데이터 지도 역할이다.
+  const count = document.createElement('span')
+  count.className = 'period-tab-count'
+  count.textContent = String(code === ALL_PERIODS
+    ? jobs.length
+    : jobs.filter((job) => jobPeriod(job) === code).length)
+  tab.appendChild(count)
+
+  tab.addEventListener('click', () => selectPeriod(code))
+  return tab
+}
+
+// 반기 탭은 필터가 아니라 집계 범위다. 검색어와 두 드롭다운은 그대로 두고,
+// 숫자가 다시 계산되는 요약 카드 선택만 '전체'로 돌린다.
+// clearSummaryQuickFilter() 를 쓰면 안 된다. 그 함수는 ''(아무 카드도 활성 아님)로 두는데
+// 그건 드롭다운을 직접 바꿨을 때의 상태이고, 탭 전환 후에는 '전체 공고' 카드가 켜진 초기 상태가 맞다.
+function selectPeriod(code) {
+  if (code === activePeriod) return
+  setActivePeriod(code)
+  activeSummaryFilter = 'all'
+  updateSummaryFilterUi()
+  renderJobs()
+  // replaceChildren() 이 방금 누른 버튼을 버리므로 키보드 포커스를 되돌려 준다.
+  periodTabs.querySelector('.period-tab.is-active')?.focus()
+}
+
+// 빈 목록 문구. 공고가 0건인 반기에서 '등록된 지원 내역이 없습니다'는 데이터가 날아간 것처럼 읽힌다.
+function buildEmptyMessageText() {
+  if (jobs.length === 0) return '등록된 지원 내역이 없습니다.'
+  if (periodScopedJobs().length === 0) {
+    return `${periodLabel(activePeriod)}에 등록한 공고가 없습니다. 오른쪽 위 + 공고 등록으로 추가해 보세요.`
+  }
+  return '조건에 맞는 공고가 없습니다.'
+}
+
 function percentage(value, total) {
   return total > 0 ? Math.round((value / total) * 100) : 0
 }
 
 function finishedJobCount() {
-  return jobs.filter(isFinishedJob).length
+  return periodScopedJobs().filter(isFinishedJob).length
 }
 
+// 반기 라벨을 앞에 붙인다. 없으면 반기 탭에서 '총 7개'가 DB 가 줄어든 것처럼 읽힌다.
 function buildCountText(visibleCount) {
-  if (visibleCount === jobs.length) return `총 ${jobs.length}개 공고 관리 중`
-  const base = `총 ${jobs.length}개 중 ${visibleCount}개 표시`
+  const scopedCount = periodScopedJobs().length
+  const scopeName = activePeriod === ALL_PERIODS ? '' : `${periodLabel(activePeriod)} · `
+  if (visibleCount === scopedCount) return `${scopeName}총 ${scopedCount}개 공고 관리 중`
+  const base = `${scopeName}총 ${scopedCount}개 중 ${visibleCount}개 표시`
   const hiddenFinished = shouldIncludeFinished() ? 0 : finishedJobCount()
   return hiddenFinished > 0 ? `${base} · 종료 ${hiddenFinished}건 숨김` : base
 }
@@ -585,7 +782,11 @@ function shouldIncludeFinished() {
   if (showArchived) return true
   if (activeKeyword()) return true
   if (['최종합격', '최종탈락'].includes(statusFilter.value)) return true
-  return Boolean(activeSummaryFilter) && activeSummaryFilter !== 'all'
+  if (Boolean(activeSummaryFilter) && activeSummaryFilter !== 'all') return true
+  // 지난 반기는 공고가 전부 종료 상태일 수 있다. 그때 접기를 그대로 두면
+  // 요약 카드는 7건인데 표는 비어 보인다.
+  const scoped = periodScopedJobs()
+  return scoped.length > 0 && scoped.every(isFinishedJob)
 }
 
 function renderArchiveToggle() {
@@ -615,13 +816,38 @@ function writeArchivePreference(value) {
   }
 }
 
+
+function readPeriodPreference() {
+  try {
+    const stored = window.localStorage.getItem(PERIOD_VIEW_KEY)
+    if (stored === ALL_PERIODS || PERIOD_PATTERN.test(String(stored))) return stored
+  } catch {
+    // 화면 설정일 뿐이라 읽기에 실패해도 기본값으로 진행한다.
+  }
+  // 기본값은 오늘이 속한 반기다. '이번 시즌 성과'가 이 기능의 목적이고, 최신순 정렬에서 맨 앞 탭이다.
+  return currentPeriod()
+}
+
+function writePeriodPreference(value) {
+  try {
+    window.localStorage.setItem(PERIOD_VIEW_KEY, value)
+  } catch {
+    // 화면 설정일 뿐이라 저장에 실패해도 그대로 진행한다.
+  }
+}
+
+function setActivePeriod(code) {
+  activePeriod = code
+  writePeriodPreference(code)
+}
+
 function getFilteredJobs() {
   const keyword = activeKeyword()
   const selectedStatus = statusFilter.value
   const selectedPrepared = preparedFilter.value
   const includeFinished = shouldIncludeFinished()
 
-  return jobs
+  return periodScopedJobs()
     .filter((job) => {
       const matchesStatus = selectedStatus === '전체'
         || (selectedStatus === '진행중'
@@ -792,7 +1018,9 @@ function collectTodoEvents() {
   ))
 }
 
-// 요약 카드와 마찬가지로 검색·필터 결과가 아니라 전체 공고를 기준으로 계산한다.
+// 요약 카드와 달리 반기 범위를 따르지 않는다. 검색·필터·반기 탭과 무관한 전체 공고 기준이다.
+// 배너는 통계가 아니라 '놓치면 안 되는 일정' 알림이라, 27년 상반기 탭을 보는 중에
+// 26년 하반기 공고의 내일 면접이 사라지면 실제로 일정을 놓친다. D-7 창이 이미 시간 필터다.
 function renderTodoBanner() {
   const events = collectTodoEvents()
   todoPanel.hidden = events.length === 0
@@ -834,6 +1062,9 @@ function createTodoChip(event) {
 // 칩을 누르면 아래 현황판이 그 공고만 보여주도록 기존 검색 경로를 그대로 쓴다.
 function focusJobFromTodo(job) {
   clearSummaryQuickFilter()
+  // 배너는 전체 반기 기준이라 다른 반기 공고의 칩일 수 있다. 범위를 그 공고의 반기로 함께 옮기지 않으면
+  // 검색어는 들어가는데 반기 범위가 먼저 걸러내 현황판이 빈 표가 된다.
+  setActivePeriod(jobPeriod(job))
   preparedFilter.value = '전체'
   statusFilter.value = '전체'
   searchInput.value = job.company
@@ -1650,6 +1881,8 @@ function startEdit(id) {
   roleInput.value = target.role
   dateInput.value = target.date
   deadlineTimeInput.value = target.deadlineTime
+  renderPeriodInputOptions()
+  selectFormPeriod(target.applyPeriod, target.date)
   documentPreparedInput.checked = target.documentPrepared
   assessmentDateInput.value = target.assessmentDate
   assessmentTimeInput.value = target.assessmentTime
@@ -1715,6 +1948,8 @@ function resetForm() {
   jobForm.reset()
   linkInput.setCustomValidity('')
   clearTimeValidity()
+  // reset() 이 첫 옵션('자동')을 고르고 dateInput 도 비우므로 문구를 다시 쓴다.
+  updateAutoPeriodLabel()
   submitButton.textContent = '등록하기'
   cancelEditButton.hidden = true
 }
@@ -1729,6 +1964,7 @@ function openJobForm() {
 
 function openNewJobForm() {
   resetForm()
+  renderPeriodInputOptions()
   formTitle.textContent = '지원 기업 등록'
   openJobForm()
   companyInput.focus()
@@ -2019,9 +2255,11 @@ function cleanText(value, maxLength) {
 }
 
 // 새 컬럼이 아직 DB에 없을 때 나오는 오류인지. 컬럼을 추가할 때마다 여기 이름이 늘지 않도록
-// assessment_ 계열 전체를 한 번에 본다.
+// assessment_ 계열은 접두사로 한 번에 보고, does not exist 로 끝나는 열 누락 오류도 함께 받는다.
+// 이게 빠지면 SQL 보다 웹 코드를 먼저 올린 사용자가 '인터넷 연결을 확인하라'는 엉뚱한 안내를 받는다.
 function isSchemaOutdated(message) {
-  return /assessment_[a-z]+/.test(String(message || ''))
+  const text = String(message || '')
+  return /assessment_[a-z]+|apply_period/.test(text) || /does not exist/i.test(text)
 }
 
 function allowedValue(value, allowed, fallback) {
@@ -2055,6 +2293,7 @@ exportButton.addEventListener('click', () => {
     role: job.role,
     date: job.date,
     deadlineTime: job.deadlineTime,
+    applyPeriod: jobPeriod(job),
     link: job.link,
     jd: job.jd,
     preferred: job.preferred,

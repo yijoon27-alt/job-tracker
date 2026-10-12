@@ -18,7 +18,8 @@
 - 2026-09-17 6차 작업으로 `이번 주 할 일` 배너, 면접일을 반영한 정렬, JD·자소서 전문 검색, 종료 공고 접기를 추가했다. **새 DB 컬럼이 없어 `supabase-schema.sql`은 그대로다.** 기존 `interview1_date` / `interview2_date`를 정렬에 쓰기 시작했을 뿐이다.
 - 2026-09-18 7차 작업으로 공고별 특이사항 메모(`notes`)를 추가했다. **새 컬럼이 생기므로 SQL 실행이 먼저다.** 현황판 `현재 전형` 칸에서 인라인으로 쓰고 blur 시 자동 저장한다.
 - 2026-09-19 8차 작업으로 현황판 표의 행 높이를 129px → 100px로 줄였다. **DB 변경 없이 `style.css` 여백과 메모칸 높이 계산만 손댄 순수 레이아웃 작업이다.** 메모칸은 1줄로 시작해 내용만큼 자동으로 늘어난다.
-- GitHub 배포와 별개로 최신 `supabase-schema.sql`이 Supabase SQL Editor에 적용되어 있어야 한다. 현재 코드는 `document_prepared`, `deadline_time`, `assessment_deadline`, `assessment_time`, `assessment_done`, `assessment_type`, `assessment_result` 필드를 모두 전제로 하며, `assessment_result`는 `미대상`을 허용하는 최신 제약조건이어야 한다.
+- 2026-10-13 9차 작업으로 지원 반기(상·하반기) 분류와 반기별 통계를 추가했다. **새 컬럼 `apply_period`가 생기므로 SQL 실행이 먼저다.** 요약 카드 위의 반기 탭이 요약 카드 5개와 현황판 목록의 모집단을 그 반기로 좁힌다. 기존 기록은 마감일과 무관하게 전부 `2026-H2`로 일괄 보정했다.
+- GitHub 배포와 별개로 최신 `supabase-schema.sql`이 Supabase SQL Editor에 적용되어 있어야 한다. 현재 코드는 `document_prepared`, `deadline_time`, `assessment_deadline`, `assessment_time`, `assessment_done`, `assessment_type`, `assessment_result`, `apply_period` 필드를 모두 전제로 하며, `assessment_result`는 `미대상`을 허용하는 최신 제약조건이어야 한다.
 
 ## 현재 현황판 UI/UX
 
@@ -49,12 +50,14 @@
 - 서류 `미작성` 토글은 중립 상태를 나타내는 회색으로 표시하고, `작성 완료` 토글만 초록색으로 강조한다.
 - 정렬과 행 강조선의 기준 날짜는 `nextDeadline()`이 정한다. 2026-09-17부터 내부적으로 `upcomingEvents(job)`가 돌려주는 목록의 **가장 빠른 일정**을 쓴다. 목록에는 서류 마감(미작성이고 마감 전), 역검 마감(`isAssessmentPending()`), 결과 대기 중인 1차·2차 면접일이 들어간다. 챙길 일정이 하나도 없으면 예전처럼 서류 마감으로 돌아간다. 면접이 없는 공고는 변경 전 로직과 결과가 완전히 같다.
 - **`hasPendingWork()`는 일부러 건드리지 않았다.** 최상단 `해야 할 일` 그룹은 여전히 서류·역검 미완료 기준이고, 면접은 `진행 중` 그룹 안에서 정렬로만 올라온다. 여기까지 바꾸면 기존 4그룹 정렬 규칙이 크게 흔들린다.
-- `collectTodoEvents()`는 전체 공고의 `upcomingEvents()`를 모아 D-7 이내만 남기고 시각순으로 정렬해 `이번 주 할 일` 배너(`#todoPanel`)를 그린다. 요약 카드와 마찬가지로 검색·필터 결과가 아니라 전체 `jobs` 기준이다. 칩 색은 `deadlineClassName()`을 그대로 써서 현황판의 마감 색 의미와 통일한다. 칩을 누르면 `focusJobFromTodo()`가 검색창에 기업명을 넣어 기존 필터 경로를 탄다.
+- `collectTodoEvents()`는 전체 공고의 `upcomingEvents()`를 모아 D-7 이내만 남기고 시각순으로 정렬해 `이번 주 할 일` 배너(`#todoPanel`)를 그린다. 검색·필터는 물론 **반기 탭과도 무관한 전체 `jobs` 기준이다.** 배너는 통계가 아니라 놓치면 안 되는 일정 알림이라, 27년 상반기 탭을 보는 중에 26년 하반기 공고의 내일 면접이 사라지면 실제로 일정을 놓친다. D-7 창이 이미 시간 필터 역할을 한다. 배너 제목 옆의 `전체 기간 기준` 표시가 이 예외를 화면에서도 알려 준다. 칩 색은 `deadlineClassName()`을 그대로 써서 현황판의 마감 색 의미와 통일한다. 칩을 누르면 `focusJobFromTodo()`가 검색창에 기업명을 넣어 기존 필터 경로를 탄다. **배너가 전체 기준이라 다른 반기 공고의 칩이 뜰 수 있으므로, 이때 `setActivePeriod(jobPeriod(job))`로 범위도 그 공고의 반기로 함께 옮긴다.** 옮기지 않으면 검색어는 들어가는데 반기 범위가 먼저 걸러내 현황판이 빈 표가 된다.
 - `일정 내보내기 (.ics)`는 `buildCalendarText()`가 표준 시간대 없는 floating time으로 `VCALENDAR`를 만들어 Blob으로 내려받는다. 외부 라이브러리를 쓰지 않는다.
-- 검색은 `fromDatabaseJob()`이 만들어 두는 `job.searchIndex`(`title` / `jd` / `coverLetter` 세 갈래 소문자 문자열)를 본다. 자소서가 최대 20만 자라 키 입력마다 다시 만들지 않는다. **필드를 추가하거나 이름을 바꾸면 `buildSearchIndex()`도 함께 고쳐야 한다.**
+- 검색은 `fromDatabaseJob()`이 만들어 두는 `job.searchIndex`(`title` / `jd` / `coverLetter` 세 갈래 소문자 문자열)를 본다. 자소서가 최대 20만 자라 키 입력마다 다시 만들지 않는다. **필드를 추가하거나 이름을 바꾸면 `buildSearchIndex()`도 함께 고쳐야 한다.** 단 이 규칙의 대상은 사용자가 검색창에 칠 법한 **본문 텍스트** 필드다. `apply_period`는 일부러 넣지 않았다. 저장값이 `2027-H1`이라는 분류 코드이고 한글 라벨은 파생값이라 인덱스에 없으며, `2027`이나 `상반기`로 기업이 걸리면 잡음만 된다. 반기는 검색이 아니라 탭으로 고르는 범위다.
 - `materialMatchClass()`는 기업명·직무로는 설명되지 않는데 목록에 올라온 행의 JD·우대·자소서 버튼에 `is-match` 클래스를 붙인다. 왜 이 회사가 검색에 걸렸는지 알려 주기 위한 것이다.
-- 종료 공고 접기는 `isFinishedJob()`(= `isJobRejected()` 또는 `최종합격`)과 `shouldIncludeFinished()`가 담당한다. 검색어, `최종합격`·`최종탈락` 상태 필터, 요약 카드 선택 중에는 접기 설정을 무시하고 종료 공고를 포함한다. 접기 상태는 `localStorage['jobTracker:showArchived']`에 저장한다. 개인 데이터가 아닌 화면 설정이므로 Supabase에 넣지 않았다.
-- **요약 카드와 배너 숫자는 접기와 무관하게 전체 공고 기준을 유지한다.** 목록만 줄이고 집계는 건드리지 않는다.
+- 종료 공고 접기는 `isFinishedJob()`(= `isJobRejected()` 또는 `최종합격`)과 `shouldIncludeFinished()`가 담당한다. 검색어, `최종합격`·`최종탈락` 상태 필터, 요약 카드 선택 중에는 접기 설정을 무시하고 종료 공고를 포함한다. 접기 상태는 `localStorage['jobTracker:showArchived']`에 저장한다. 개인 데이터가 아닌 화면 설정이므로 Supabase에 넣지 않았다. **종료 공고 건수는 선택한 반기 기준으로 세지만 펼침/접힘 상태 자체는 모든 탭이 공유한다.** 토글은 '종료 공고를 보고 싶은가'라는 취향이지 반기별 설정이 아니기 때문이다.
+- 선택한 반기의 공고가 **전부 종료 상태이면** `shouldIncludeFinished()`가 접기를 무시하고 포함한다. 그러지 않으면 요약 카드는 7건인데 표만 비어 보인다. 지난 반기를 되돌아볼 때 반드시 걸리는 경우라 예외로 넣었다.
+- **요약 카드는 접기·검색·필터와 무관하게 `선택한 반기 안의` 전체 공고 기준이다.** 목록만 줄이고 집계는 건드리지 않는다는 원칙은 그대로이고, 모집단을 바꾸는 것은 반기 탭 하나뿐이다.
+- **배너 숫자만 반기와도 무관한 전체 공고 기준이다.** 9차 작업 전에는 요약 카드와 배너가 같은 기준이었으나 지금은 갈라졌다.
 - `서류 마감` 칸의 `D-Day` 배지와 날짜는 정렬 기준과 무관하게 언제나 실제 서류 마감을 그대로 보여준다.
 - `서류 작성` 열의 `미작성 / 작성 완료` 체크박스를 누르면 별도의 수정 화면 없이 Supabase에 즉시 저장된다.
 - 등록·수정 폼에서도 `서류 작성 완료`를 함께 지정할 수 있다.
@@ -70,23 +73,43 @@
 - 메모칸은 `rows=1`로 시작해 `autosizeMemo()`가 내용 줄 수만큼 높이를 늘린다. `box-sizing: border-box`라 `scrollHeight`에 테두리가 빠지므로 `offsetHeight - clientHeight`만큼 더해주지 않으면 한 줄이 잘려 스크롤바가 생긴다. `max-height: 96px`에서 멈추고 그 뒤로는 안쪽 스크롤이며, 인라인 `height`와 충돌하므로 `.memo-input`은 `resize: none`이다(전역 `textarea` 규칙의 `resize: vertical`을 덮어쓴다).
 - 높이 계산은 `scrollHeight`를 읽어야 해서 **행이 DOM에 붙은 뒤**여야 한다. `createTableRow()`가 만드는 `tr`은 아직 떨어져 있으므로 `renderJobs()`의 append 루프가 끝난 다음 `autosizeAllMemos()`를 한 번 돌린다. 창 폭이 바뀌면 줄바꿈 위치와 글자 크기(모바일 16px)가 달라져 인라인 높이가 낡은 값이 되므로 `window` `resize`에서도 다시 잰다.
 - 행 높이는 `tr`·`td`에 명시값이 없고 **가장 높은 `.process-cell`(현재 전형 + 단계 칩 + 메모)의 콘텐츠 높이**가 그대로 행 높이가 된다. 2026-09-19에 td padding을 `8px 10px`로, `.current-stage-header` margin-bottom과 `.memo-box` margin-top을 6px로 줄이고 메모를 1줄로 바꿔 일반 행을 129px → 100px로 압축했다. 단계 칩·링크 칩 크기는 클릭 타겟 유지를 위해 건드리지 않았다. `@media (max-width: 720px)` 블록이 카드 뷰용으로 `td { padding: 12px }`를 다시 선언하므로 모바일은 영향받지 않는다.
-- CSS와 JavaScript에는 `20260917-compact-rows` 캐시 버전이 적용되어 있다.
+- 반기 탭(`#periodTabs`)은 `.list-tools`(건수 문구·종료 접기 버튼)와 요약 카드 사이에 있다. `.list-tools`의 `margin: -6px 0 16px`는 `.list-header` 밑으로 파고드는 의도된 값이라 그 둘 사이에 끼워 넣으면 안 된다.
+- **탭은 필터가 아니라 집계 범위다.** 탭을 바꾸면 요약 카드 선택만 `all`로 되돌리고 검색어와 두 드롭다운은 그대로 둔다. 반대로 카드·드롭다운을 바꿔도 탭은 유지한다. `clearSummaryQuickFilter()`를 쓰면 안 된다. 그 함수는 `activeSummaryFilter`를 `''`(아무 카드도 활성 아님)로 두는데 그건 드롭다운을 직접 바꿨을 때의 상태이고, 탭 전환 뒤에는 `전체 공고` 카드가 켜진 초기 상태가 맞다.
+- 탭 목록은 `collectPeriodOptions()`가 만든다. 데이터에 있는 반기 ∪ 오늘이 속한 반기 ∪ 다음 반기 ∪ 기준 반기(`2026-H2`)의 합집합이라 **해가 바뀌어도 코드를 고칠 필요가 없다.** `28년 상반기`는 2027-07-01에 저절로 생기거나 그 반기 마감일을 저장하는 순간 생긴다. 목록을 좁히지 않으므로 기존 기록이 숨지 않는다. 대신 해마다 2개씩 늘어 가로 스크롤로 넘긴다.
+- 탭에 붙은 건수는 검색·필터·접기와 무관한 그 반기의 전체 건수다. 어느 반기에 몇 건이 있는지 누르기 전에 보여 주는 데이터 지도다.
+- 선택한 반기는 `localStorage['jobTracker:applyPeriod']`에 저장하고, 기본값은 **오늘이 속한 반기**다(`readPeriodPreference()`). `이번 시즌 성과`가 이 기능의 목적이고 최신순 정렬에서 맨 앞 탭이기 때문이다. 사용자가 탭을 누르기 전에는 쓰지 않는다. 그래서 **2027-01-01이 되면 기본 탭이 비어 있는 `27년 상반기`가 된다. 고장이 아니라 의도다.**
+- 공고를 다 지워 사라진 반기가 선택돼 있으면 `renderPeriodTabs()` 첫머리가 `전체`로 되돌린다. `jobs`가 비어 있는 로그아웃·로딩 전 렌더에서 멀쩡한 선택을 덮어쓰지 않도록 `jobs.length > 0` 가드가 붙어 있다. 이 보정이 집계보다 먼저 일어나야 해서 `renderJobs()`는 `renderPeriodTabs()`를 **맨 처음에** 호출한다.
+- 탭은 `role="tablist"`가 아니라 `role="group"` + 버튼 `aria-pressed`다. 기존 `.summary-card`·`.archive-toggle`이 모두 이 관례이고, 진짜 `tablist`는 `tabpanel`과 방향키 로빙 포커스까지 요구해서 반만 만든 `tablist`가 오히려 더 나쁘다. `.summary-grid`에 이미 `aria-live="polite"`가 있어 탭을 바꾸면 재계산된 카드 값이 저절로 읽힌다.
+- `replaceChildren()`이 방금 누른 버튼을 버리므로 `selectPeriod()` 끝에서 새 활성 탭으로 포커스를 되돌린다. 없으면 키보드 사용자의 포커스가 `body`로 떨어진다.
+- 공고가 0건인 반기에서는 `buildEmptyMessageText()`가 `등록된 지원 내역이 없습니다` 대신 그 반기 이름을 넣은 문구를 쓴다. 기존 문구는 데이터가 날아간 것처럼 읽힌다. 덤으로 검색 결과가 없을 때의 같은 오해도 함께 고쳐졌다.
+- 지금 보고 있는 반기 **밖으로** 저장된 공고는 목록에 나타나지 않아 저장 실패처럼 보인다. `followSavedJobPeriod()`가 저장 직후 그 공고의 반기로 범위를 옮기고 토스트에 어느 반기로 분류했는지 덧붙인다. 등록·수정 양쪽과 데모 경로 모두에 걸려 있다.
+- CSS와 JavaScript에는 `20261013-period-tabs` 캐시 버전이 적용되어 있다.
 
 ## 요약 통계 계산 기준
 
-요약 카드는 검색이나 필터 결과가 아니라 로그인한 사용자의 전체 `jobs` 배열을 기준으로 계산하며, 저장·수정·삭제와 서류 작성·역량검사 응시 체크가 성공할 때마다 다시 렌더링한다.
+요약 카드는 검색이나 필터 결과가 아니라 **선택한 반기 범위 안의** 전체 공고(`periodScopedJobs()`)를 기준으로 계산하며, 저장·수정·삭제와 서류 작성·역량검사 응시 체크가 성공할 때마다 다시 렌더링한다. `전체` 탭에서는 예전처럼 `jobs` 전체가 모집단이다.
 
-- `전체 공고`: 저장된 전체 지원 공고 수
-- `서류 작성`: `document_prepared = true`인 수와 전체 공고 수, 작성 완료 비율
+반기 분류 규칙은 **서류 제출 마감일(`deadline`)의 월**이다. 1~6월이면 `YYYY-H1`(상반기), 7~12월이면 `YYYY-H2`(하반기). 마감일은 폼 필수 입력이고 SQL에서도 `not null`이라 분류가 비는 경우가 없다. 등록·수정 폼에서 직접 다른 반기로 덮어쓸 수 있다(26년 12월 마감이지만 27년 상반기 공채인 경우 등).
+
+`jobPeriod()`가 저장값이 비었거나 형식이 깨졌을 때 마감일에서 되살리고, 그래도 안 되면 `2026-H2`로 떨어뜨린다. 이 폴백이 **모든 반기 탭 건수의 합 === 전체 건수** 불변식을 보장한다.
+
+다섯 카드 모두 아래 정의를 **선택한 반기 안에서** 계산한다.
+
+- `전체 공고`: 그 반기에 저장된 지원 공고 수
+- `서류 작성`: `document_prepared = true`인 수와 그 반기의 전체 공고 수, 작성 완료 비율
 - `서류 결과 대기`: 서류 작성 완료 건 중 `doc_status = '대기'`인 수
-- `서류 합격률`: 서류 작성 완료 건 중 `합격 / (합격 + 탈락) × 100`; 결과 대기 건은 분모에서 제외
+- `서류 합격률`: 서류 작성 완료 건 중 `합격 / (합격 + 탈락) × 100`; 결과 대기 건은 분모에서 제외. **분모 규칙은 반기 안에서도 그대로다.**
 - `진행 중 공고`: 지원서 작성 중과 서류 결과 대기를 제외하고, 탈락·최종합격으로 종료되지 않은 서류 합격 및 이후 역검·면접 단계의 공고 수
+
+**건수는 반기끼리 더해지지만 비율은 더해지지 않는다.** 데모 데이터 기준 26년 하반기 100% + 27년 상반기 0% 인데 전체는 83%다. 분모가 다르기 때문이며 버그가 아니다.
+
+`buildCountText()`는 반기를 고른 동안 문구 앞에 `26년 하반기 · ` 라벨을 붙인다. 없으면 `총 7개 공고 관리 중`이 DB가 줄어든 것처럼 읽힌다.
 
 ## 데이터 구조
 
 `public.jobs`의 주요 필드는 다음과 같다.
 
-- 기본 정보: `company`, `role`, `deadline`, `deadline_time`, `link`
+- 기본 정보: `company`, `role`, `deadline`, `deadline_time`, `apply_period`, `link`
 - 지원 자료: `jd`, `preferred`, `cover_letter`
 - 특이사항 메모: `notes text not null default ''` (최대 2000자, `jobs_notes_length` 제약조건)
 - 작성 여부: `document_prepared boolean not null default false`
@@ -97,12 +120,22 @@
 허용 상태값은 다음과 같다.
 
 - 서류: `대기`, `합격`, `탈락`
+- 지원 반기: `'YYYY-H1'` / `'YYYY-H2'` 형식(기본값 `''`). **열거가 아니라 정규식 `^[0-9]{4}-H[12]$` 제약조건이라 2027년 이후에도 SQL 변경이 필요 없다.** 열거로 했다면 매년 1월 제약조건 교체를 빠뜨리는 순간 저장이 CHECK 위반으로 실패하고, `isSchemaOutdated()`가 그 메시지를 못 알아들어 사용자에게 `인터넷 연결을 확인하라`는 엉뚱한 안내가 나간다. 이 필드는 HTML `<option>`이 동적 생성이라 **`허용값이 HTML·JS·SQL 세 곳에서 일치하는지` 대조 항목이 적용되지 않는다.** 대신 지켜야 할 불변식은 `app.js`의 `PERIOD_PATTERN`과 SQL 정규식이 같다는 것이다.
 - AI 역량검사/인적성 유형: `미지정`, `AI 역검`, `인적성` (기본값 `미지정`, 표시 라벨 전용)
 - AI 역량검사/인적성 결과: `미대상`, `대기`, `합격`, `탈락` (1·2차 면접과 동일한 4단계)
 - 1·2차 면접: `미대상`, `대기`, `합격`, `탈락`
 - 최종: `진행중`, `최종합격`, `최종탈락`
 
-`deadline_time`, `assessment_deadline`, `assessment_time`은 모두 null 허용이고 `assessment_done`은 기본값이 `false`, `assessment_type`은 기본값이 `미지정`이다. `assessment_type`의 제약조건도 `assessment_result`와 같은 do-block 패턴으로 `jobs_assessment_type_allowed` 이름을 고정해 다시 건다. 새 컬럼 이름에 `assessment_result`가 부분 문자열로 들어가면 기존 do-block의 `like '%assessment_result%'`에 걸려 엉뚱한 제약조건이 드롭되므로 주의한다. `assessment_result`는 기본값이 `미대상`이다. 마이그레이션은 두 단계로 나뉜다. 먼저 컬럼이 없던 설치에 컬럼을 추가하면서 이미 1차 이후로 진행한 공고를 `합격`으로 보정하고, 그다음 제약조건을 4값으로 교체하면서 마감일도 응시 기록도 없는 잔여 `대기` 행만 `미대상`으로 정리한다. 제약조건 이름은 설치 경로에 따라 다를 수 있어 `pg_constraint`에서 찾아 드롭한 뒤 `jobs_assessment_result_allowed`로 다시 건다.
+`deadline_time`, `assessment_deadline`, `assessment_time`은 모두 null 허용이고 `assessment_done`은 기본값이 `false`, `assessment_type`은 기본값이 `미지정`이다. `assessment_type`의 제약조건도 `assessment_result`와 같은 do-block 패턴으로 `jobs_assessment_type_allowed` 이름을 고정해 다시 건다. 새 컬럼 이름에 `assessment_result`가 부분 문자열로 들어가면 기존 do-block의 `like '%assessment_result%'`에 걸려 엉뚱한 제약조건이 드롭되므로 주의한다. `assessment_result`는 기본값이 `미대상`이다.
+
+`apply_period`는 기본값이 `''`이고 제약조건 이름은 `jobs_apply_period_format`이다. 이름에 `assessment_result` / `assessment_type`이 부분 문자열로 들어가지 않아 위쪽 do-block 들의 `pg_get_constraintdef ... like '%assessment_%'` 스윕에 걸리지 않는다. 제약조건은 교체가 아니라 추가이므로 `jobs_notes_length`처럼 `pg_constraint.conname` 가드를 쓴다.
+
+**`apply_period` 마이그레이션에는 두 가지 함정이 있다.**
+
+1. 컬럼 추가를 `alter table ... add column if not exists ...` 묶음(`deadline_time` 등이 있는 곳)에 **절대 넣지 말 것.** 그 묶음이 do-block보다 먼저 실행돼 컬럼을 만들어 버리면 do-block의 `if not exists`가 거짓이 되어 **백필만 조용히 건너뛴다.** 기존 기록 전부가 `''`로 남아 `26년 하반기 일괄 분류`라는 요구가 깨진다. 컬럼 생성 경로는 신규 설치의 DDL과 기존 설치의 do-block 둘뿐이어야 한다.
+2. 가드 **밖에** `update ... where apply_period = ''` 같은 무조건 보정을 추가하지 말 것. 스크립트를 다시 실행할 때마다 마이그레이션 이후에 등록한 27년 상반기 공고를 `2026-H2`로 되돌린다. 멱등성은 오직 `information_schema.columns` 가드가 책임진다.
+
+컬럼 추가 블록은 제약조건 블록보다 **반드시 먼저** 와야 한다. 순서가 바뀌면 기존 설치에서 아직 없는 컬럼에 제약조건을 걸려다 스크립트 전체가 중단된다. 마이그레이션은 두 단계로 나뉜다. 먼저 컬럼이 없던 설치에 컬럼을 추가하면서 이미 1차 이후로 진행한 공고를 `합격`으로 보정하고, 그다음 제약조건을 4값으로 교체하면서 마감일도 응시 기록도 없는 잔여 `대기` 행만 `미대상`으로 정리한다. 제약조건 이름은 설치 경로에 따라 다를 수 있어 `pg_constraint`에서 찾아 드롭한 뒤 `jobs_assessment_result_allowed`로 다시 건다.
 
 `supabase-schema.sql`은 기존 테이블에 `document_prepared`가 없을 때만 필드를 추가한다. 필드 추가 시 기존 기록 중 자기소개서가 있거나 전형 단계가 이미 진행된 기록은 작성 완료로 한 번 보정한다. 스크립트를 다시 실행해도 기존 지원 기록을 삭제하지 않는다.
 
@@ -110,19 +143,23 @@
 
 - `index.html`: 로그인, 오른쪽 등록·수정 패널, 마감일시와 역량검사 입력, 요약 카드, 필터와 압축형 현황판 마크업
 - `style.css`: 전체 레이아웃, 오른쪽 패널, 마감·탈락 표시, 역량검사 배지, 단계 흐름과 모바일 카드 스타일
-- `app.js`: Google 로그인, Supabase CRUD, 패널 제어, 서류 작성·역량검사 응시 즉시 저장, 역량검사 결과와 전형 단계 연결, 마감 시각 정규화와 정렬, 전형 요약, 검색·필터, 통계, 백업과 기존 데이터 이전
+- `app.js`: Google 로그인, Supabase CRUD, 패널 제어, 서류 작성·역량검사 응시 즉시 저장, 역량검사 결과와 전형 단계 연결, 마감 시각 정규화와 정렬, 전형 요약, 검색·필터, 반기 분류와 반기별 통계, 백업과 기존 데이터 이전
 - `config.js`: Supabase Project URL과 브라우저용 Publishable key
 - `supabase-schema.sql`: 테이블과 필드 마이그레이션, 열 권한, RLS, 트리거와 기존 데이터 이전 함수
-- `preview-demo.js`: 로컬 미리보기 전용 샘플 공고 10건. `app.js`의 `tryDemoMode()`가 호스트명이 `localhost` 또는 `127.0.0.1`이고 주소에 `?demo=1`이 있을 때만 동적 `import`로 불러온다. 공개 사이트에서는 호스트명 검사에 막히고, GitHub에 올리지 않으면 `import`가 실패해 `catch`로 평소 로그인 흐름으로 돌아간다. 데모 모드의 등록·수정·삭제·체크는 전부 메모리에서만 일어난다. 배포용 파일이 아니므로 GitHub에 올리지 않아도 된다.
+- `preview-demo.js`: 로컬 미리보기 전용 샘플 공고 10건. 반기 탭을 시험할 수 있도록 26년 하반기 7건·27년 상반기 3건으로 나눠 두었고, 그중 쿠팡 건은 마감일(26년 하반기)과 다른 반기를 직접 지정한 override 예시다. `app.js`의 `tryDemoMode()`가 호스트명이 `localhost` 또는 `127.0.0.1`이고 주소에 `?demo=1`이 있을 때만 동적 `import`로 불러온다. 공개 사이트에서는 호스트명 검사에 막히고, GitHub에 올리지 않으면 `import`가 실패해 `catch`로 평소 로그인 흐름으로 돌아간다. 데모 모드의 등록·수정·삭제·체크는 전부 메모리에서만 일어난다. 배포용 파일이 아니므로 GitHub에 올리지 않아도 된다.
 - `README.md`: Supabase, Google OAuth와 GitHub Pages 설정 안내
 
-DB 필드를 추가하거나 이름을 바꿀 때는 `supabase-schema.sql`만 수정하면 안 된다. `app.js`의 `DB_COLUMNS`, DB↔화면 변환, 폼 저장, 빠른 업데이트, JSON 백업, 기존 데이터 정규화와 SQL의 `grant insert/update` 목록을 함께 맞춰야 한다. 특히 `grant insert/update` 목록을 빠뜨리면 화면에는 오류가 없어도 저장만 조용히 실패한다.
+DB 필드를 추가하거나 이름을 바꿀 때는 `supabase-schema.sql`만 수정하면 안 된다. `app.js`의 `DB_COLUMNS`, DB↔화면 변환, 폼 저장, 빠른 업데이트, JSON 백업, `isSchemaOutdated()`, 기존 데이터 정규화와 SQL의 `grant insert/update` 목록을 함께 맞춰야 한다.
+
+`grant insert/update` 목록을 빠뜨리면 저장만 실패한다. `grant select, delete`는 테이블 단위라 **읽기는 멀쩡하고 쓰기만 막힌다.** 정확히는 조용하지 않고 **오해를 부른다.** Postgres가 `42501 permission denied`를 내고 PostgREST가 403을 주는데 `isSchemaOutdated()`가 그 메시지를 못 알아들어 `저장하지 못했습니다. 입력 내용과 인터넷 연결을 확인해 주세요.`가 뜬다. 사용자는 자기 인터넷을 의심하게 된다. 실제 저장 여부는 Supabase Table Editor에서 직접 확인하는 수밖에 없다.
+
+`isSchemaOutdated()`를 빠뜨리면 SQL보다 웹 코드를 먼저 올린 사용자가 `supabase-schema.sql을 실행하라`는 안내 대신 같은 엉뚱한 메시지를 받는다. 9차 작업에서 `apply_period`와 함께 `does not exist` 패턴을 넣어 앞으로 추가되는 컬럼은 이름을 늘리지 않아도 걸리게 했다.
 
 `import_legacy_jobs(jsonb)`는 예외다. 레거시 `excelJobs`에는 2026-08-28 이후 추가된 필드가 없고 이전은 이미 1회 소진되었으므로, 새 필드는 이 함수와 `normalizeLegacyJob()`에 추가하지 않고 기본값으로 둔다.
 
 ## 배포와 업데이트 순서
 
-0. **DB 컬럼을 추가하거나 바꾼 작업일 때만** 1번을 수행한다. 2026-09-17 작업처럼 웹 코드만 바뀐 변경은 SQL 실행 없이 2번부터 진행하면 된다.
+0. **DB 컬럼을 추가하거나 바꾼 작업일 때만** 1번을 수행한다. 2026-09-17 작업처럼 웹 코드만 바뀐 변경은 SQL 실행 없이 2번부터 진행하면 된다. **2026-10-13 9차 작업은 `apply_period` 컬럼이 생기므로 1번부터 반드시 수행한다.**
 1. Supabase SQL Editor에서 최신 `supabase-schema.sql` 전체를 실행한다.
 2. `index.html`, `style.css`, `app.js`, `supabase-schema.sql`과 갱신한 문서를 GitHub `main` 브랜치에 업로드한다.
 3. GitHub Pages 배포 완료를 기다린다.
@@ -147,7 +184,7 @@ DB보다 웹 코드를 먼저 배포하면 `DB_COLUMNS`에 있는 열을 조회�
 - DB 함수가 Google 제공자, 이메일, 허용 여부와 1회 사용 여부를 서버에서 재검증한다.
 - DB 트랜잭션이 성공한 뒤에만 기존 `excelJobs`를 사용자별 로컬 백업 키로 이동한다.
 - 신규 데이터의 원본은 Supabase이며 `localStorage`를 원본 저장소로 사용하지 않는다.
-- `내 데이터 백업`은 모든 지원 정보와 `deadlineTime`, `documentPrepared`, `assessmentDate`, `assessmentTime`, `assessmentDone`, `assessmentResult` 값을 JSON으로 내려받는다.
+- `내 데이터 백업`은 모든 지원 정보와 `deadlineTime`, `documentPrepared`, `assessmentDate`, `assessmentTime`, `assessmentDone`, `assessmentResult`, `applyPeriod` 값을 JSON으로 내려받는다. 백업은 반기 범위를 적용하지 않은 전체 기록이고, `applyPeriod`는 원본값이 아니라 `jobPeriod()`가 정한 실효값을 넣는다. 이 JSON을 다시 가져오는 경로가 없어 사람이 읽을 수 있는 분류가 더 쓸모 있기 때문이다.
 
 ## 운영 참고
 
@@ -184,5 +221,21 @@ DB보다 웹 코드를 먼저 배포하면 `DB_COLUMNS`에 있는 열을 조회�
 - 라벨 헬퍼 3종을 실제 코드에서 떼어내 3유형 × 배지 5상태로 검증하고, 이상값 5종이 모두 `미지정`으로 폴백하는지 확인
 - `getPendingResultConfig().timelineLabel`과 `getDisplayStages()`의 인적성 칩 라벨이 3유형 모두에서 일치하는지 검증(칩 클릭 연결 불변식). 유형만 고르고 결과가 `미대상`인 공고가 기존과 같은 4칸 타임라인을 유지하는지, 역검 합격 후 1차 면접으로 넘어가는지도 함께 확인
 - `isSchemaOutdated()`를 오류 메시지 6종으로 검증
+
+- 2026-10-13 변경 코드의 JavaScript 구문 검사(`node --check app.js`, `node --check preview-demo.js`)와 CSS 중괄호 균형 검사(263/263), SQL do-block 균형 검사(5→7쌍)
+- `apply_period`가 `DB_COLUMNS`, `getFormJobData`, SQL `grant insert`, SQL `grant update` 네 곳에 모두 있는지 대조
+- `periodFromDate()`를 경계값 6종(`2026-06-30`→H1, `2026-07-01`→H2, `2026-12-31`→H2, `2027-01-01`→H1, `2027-06-30`→H1, `2027-07-01`→H2)과 거부 대상 7종(빈 문자열, `2026-13-01`, `2026-1-1`, `abc`, `null`, `undefined`, `2026-00-10`)으로 검증
+- `app.js`의 `PERIOD_PATTERN`과 SQL 정규식이 8종 입력에서 완전히 같은 판정을 내리는지 대조
+- `'YYYY-H#'` 고정 폭에서 단순 사전식 정렬이 시간순과 일치하는지 6종 표본으로 확인
+- `jobPeriod()` 폴백 3종(빈 저장값→마감일 파생, 깨진 저장값+마감일 없음→기준 반기, 명시 override 보존) 검증
+- 브라우저(`?demo=1`)에서 반기 탭 전환 시 요약 카드 5개가 모두 재계산되는지 손계산 표와 대조. 26년 하반기 7건·6/7·1건·100%(합격5·결과5)·진행중3·종료2, 27년 상반기 3건·1/3·0건·0%(합격0·결과1)·진행중0·종료1, 전체 10건·7/10·1건·83%(합격5·결과6)·진행중3·종료3
+- **회귀 게이트**: 변경 전 원본 빌드를 별도 포트에 띄워 `전체` 탭의 다섯 카드·건수 문구·종료 토글·배너 숫자가 완전히 같은지 대조. 정렬 순서 차이는 데모 마감일을 바꾼 데이터 변경 탓이며, `compareJobsByDeadline` / `nextDeadline` / `upcomingEvents` / `collectTodoEvents`가 바이트 단위로 동일함을 diff로 확인
+- 반기 탭이 선택돼 있어도 `이번 주 할 일` 배너가 다른 반기 공고(쿠팡, 27년 상반기)의 칩을 유지하는지, 그 칩을 눌렀을 때 범위가 함께 옮겨가 현황판에 **행이 실제로 보이는지** 확인(옮기지 않으면 빈 표가 되는 회귀)
+- 폼 `자동` 라벨이 마감일 입력을 실시간으로 따라가는지, 수정 폼 재진입 시 저장값이 파생값과 같으면 `자동`·다르면 그 반기가 선택되는지 3종(카카오 빈값, 쿠팡 override, 배달의민족 일치)으로 확인
+- 현재 탭 밖 반기로 저장했을 때 `followSavedJobPeriod()`가 범위를 옮기고 토스트에 분류 결과를 덧붙이는지 확인
+- 데이터에만 있는 반기(2029-H2)가 코드 수정 없이 탭으로 생기는지, 그 반기를 선택한 상태에서 유일한 공고를 지우면 탭이 사라지며 선택이 `전체`로 보정되는지(빈 화면 없음) 확인
+- 공고 0건인 반기에서 반기 이름이 들어간 빈 문구가 뜨고 카드가 모두 0, 종료 토글이 숨는지 확인
+- 모바일 미디어쿼리의 `.period-tabs` / `.period-tab` 규칙이 실제로 파싱되는지와, 폭을 좁혔을 때 줄바꿈 없이(`flex-wrap: nowrap`) 가로 스크롤이 생기는지 확인
+- Chrome 콘솔에 오류·CSP 위반이 없는지 확인
 
 실제 운영 Supabase에서 최신 SQL이 실행되었는지와 GitHub Pages에서 새 UI가 표시되는지는 배포 후 브라우저에서 최종 확인한다.

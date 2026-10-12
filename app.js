@@ -407,7 +407,7 @@ function matchesKeyword(job, keyword) {
 // 반기 목록이 데이터에 따라 변하므로 HTML 에 정적 <option> 을 두지 않고 여기서 채운다.
 function renderPeriodInputOptions() {
   const previous = periodInput.value
-  const options = collectPeriodOptions()
+  const options = collectFormPeriodOptions()
   periodInput.replaceChildren()
 
   const auto = document.createElement('option')
@@ -448,8 +448,11 @@ function selectFormPeriod(storedCode, deadlineValue) {
   updateAutoPeriodLabel()
 }
 
-// 마감일을 바꾸면 '자동' 문구가 따라 움직인다. assessmentDateInput 과 같은 'input' 이벤트를 쓴다.
-dateInput.addEventListener('input', updateAutoPeriodLabel)
+// 마감일을 바꾸면 '자동' 문구뿐 아니라 목록 자체를 다시 만든다.
+// 라벨만 갱신하면 28년 3월 마감을 입력했을 때 '자동 (마감일 기준: 28년 상반기)' 라고 적혀 있는데
+// 정작 목록에는 28년 상반기가 없어, 그 마감일을 둔 채 다른 반기로 바꿨다가 되돌릴 수 없다.
+// assessmentDateInput 과 같은 'input' 이벤트를 쓴다. 날짜 칸은 글자마다가 아니라 값이 완성될 때 발생한다.
+dateInput.addEventListener('input', renderPeriodInputOptions)
 
 function getFormJobData() {
   const assessmentDate = assessmentDateInput.value
@@ -654,12 +657,24 @@ function jobPeriod(job) {
   return periodFromDate(job.date) || BASELINE_PERIOD
 }
 
-// 탭과 폼 드롭다운에 보여줄 시기 목록. 데이터에 있는 시기 ∪ 오늘이 속한 시기 ∪ 다음 시기 ∪ 기준 시기.
+// 탭에 보여줄 반기 목록. 데이터에 있는 반기 ∪ 오늘이 속한 반기.
+// **아직 오지 않은 반기는 그 반기 공고가 생기기 전까지 넣지 않는다.** 26년 하반기에
+// 0건짜리 27년 상반기 탭이 미리 떠 있으면 잡음일 뿐이다. 27년 상반기 마감 공고를
+// 하나 저장하는 순간, 또는 실제로 27년이 되는 순간 탭이 저절로 생긴다.
 // 해가 바뀌어도 코드를 고칠 필요가 없고, 목록을 좁히지 않으므로 기존 기록이 숨지 않는다.
 function collectPeriodOptions() {
-  const today = currentPeriod()
-  const codes = new Set([BASELINE_PERIOD, today, nextPeriodOf(today)])
+  const codes = new Set([currentPeriod()])
   for (const job of jobs) codes.add(jobPeriod(job))
+  return [...codes].filter((code) => PERIOD_PATTERN.test(code)).sort().reverse()
+}
+
+// 폼 드롭다운용 목록. 탭 목록에 '다음 반기'와 '지금 입력 중인 마감일의 반기'를 더한다.
+// 탭과 달리 폼은 아직 공고가 없는 반기로도 보낼 수 있어야 한다.
+// 마감일은 26년 12월인데 27년 상반기 공채로 집계하고 싶은 경우가 이 override 의 핵심 용도다.
+function collectFormPeriodOptions() {
+  const codes = new Set([...collectPeriodOptions(), nextPeriodOf(currentPeriod())])
+  const derived = periodFromDate(dateInput.value)
+  if (derived) codes.add(derived)
   return [...codes].filter((code) => PERIOD_PATTERN.test(code)).sort().reverse()
 }
 

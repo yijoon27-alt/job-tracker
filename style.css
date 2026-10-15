@@ -1544,3 +1544,15 @@ button {
     margin: 0;
   }
 }
+
+.withdraw-btn {
+  width: auto;
+  padding: 5px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 11px;
+  cursor: pointer;
+}
+.withdraw-btn:disabled { opacity: .5; cursor: wait; }

@@ -37,7 +37,7 @@ const DOC_STATUSES = ['대기', '합격', '탈락']
 const ASSESSMENT_TYPES = ['미지정', 'AI 역검', '인적성']
 const ASSESSMENT_RESULTS = ['미대상', '대기', '합격', '탈락']
 const INTERVIEW_STATUSES = ['미대상', '대기', '합격', '탈락']
-const FINAL_STATUSES = ['진행중', '최종합격', '최종탈락']
+const FINAL_STATUSES = ['진행중', '최종합격', '최종탈락', '진행포기']
 
 const loadingPanel = document.querySelector('#loadingPanel')
 const setupPanel = document.querySelector('#setupPanel')
@@ -666,10 +666,16 @@ function collectPeriodOptions() {
   const today = currentPeriod()
   const codes = new Set([today])
   for (const job of jobs) codes.add(jobPeriod(job))
+  return sortPeriodsForDisplay(codes, today)
+}
+
+// 지금 속한 반기를 항상 맨 앞에 둔다. 나머지는 최신순이다.
+// 단순 최신순이면 미래 마감 공고를 하나 등록하는 순간 그 반기가 앞으로 튀어나와
+// 정작 지금 쓰고 있는 반기가 뒤로 밀린다. 기본 선택이기도 해서 맨 앞이 맞다.
+// 탭과 폼 드롭다운이 같은 규칙을 쓰도록 한곳에 모았다.
+function sortPeriodsForDisplay(codes, today) {
   const sorted = [...codes].filter((code) => PERIOD_PATTERN.test(code)).sort().reverse()
-  // 지금 속한 반기를 항상 맨 앞에 둔다. 나머지는 최신순이다.
-  // 단순 최신순이면 미래 마감 공고를 하나 등록하는 순간 그 반기가 앞으로 튀어나와
-  // 정작 지금 쓰고 있는 반기가 뒤로 밀린다. 기본 선택이기도 해서 맨 앞이 맞다.
+  if (!sorted.includes(today)) return sorted
   return [today, ...sorted.filter((code) => code !== today)]
 }
 
@@ -677,10 +683,11 @@ function collectPeriodOptions() {
 // 탭과 달리 폼은 아직 공고가 없는 반기로도 보낼 수 있어야 한다.
 // 마감일은 26년 12월인데 27년 상반기 공채로 집계하고 싶은 경우가 이 override 의 핵심 용도다.
 function collectFormPeriodOptions() {
-  const codes = new Set([...collectPeriodOptions(), nextPeriodOf(currentPeriod())])
+  const today = currentPeriod()
+  const codes = new Set([...collectPeriodOptions(), nextPeriodOf(today)])
   const derived = periodFromDate(dateInput.value)
   if (derived) codes.add(derived)
-  return [...codes].filter((code) => PERIOD_PATTERN.test(code)).sort().reverse()
+  return sortPeriodsForDisplay(codes, today)
 }
 
 // 지금 선택한 반기 범위. 요약 카드 5개와 현황판 목록이 모두 이 결과를 기준으로 계산된다.
@@ -698,13 +705,12 @@ function renderSummary() {
   const totalCount = scopedJobs.length
   const preparedJobs = scopedJobs.filter((job) => job.documentPrepared)
   const preparedCount = preparedJobs.length
-  const waitingCount = preparedJobs.filter((job) => job.docStatus === '대기').length
+  const waitingCount = preparedJobs.filter(isDocumentResultWaiting).length
   const decidedDocuments = preparedJobs.filter((job) => ['합격', '탈락'].includes(job.docStatus))
   const passedDocuments = decidedDocuments.filter((job) => job.docStatus === '합격').length
   const documentPassRate = percentage(passedDocuments, decidedDocuments.length)
   const ongoingCount = scopedJobs.filter((job) => (
-    !isJobRejected(job)
-    && job.finalStatus !== '최종합격'
+    !isFinishedJob(job)
     && isOngoingProcess(job)
   )).length
 
@@ -801,7 +807,7 @@ function buildCountText(visibleCount) {
 function shouldIncludeFinished() {
   if (showArchived) return true
   if (activeKeyword()) return true
-  if (['최종합격', '최종탈락'].includes(statusFilter.value)) return true
+  if (['최종합격', '최종탈락', '진행포기'].includes(statusFilter.value)) return true
   if (Boolean(activeSummaryFilter) && activeSummaryFilter !== 'all') return true
   // 지난 반기는 공고가 전부 종료 상태일 수 있다. 그때 접기를 그대로 두면
   // 요약 카드는 7건인데 표는 비어 보인다.
@@ -871,11 +877,11 @@ function getFilteredJobs() {
     .filter((job) => {
       const matchesStatus = selectedStatus === '전체'
         || (selectedStatus === '진행중'
-          && !isJobRejected(job)
-          && job.finalStatus !== '최종합격'
+          && !isFinishedJob(job)
           && isOngoingProcess(job))
         || (selectedStatus === '최종합격' && job.finalStatus === '최종합격')
         || (selectedStatus === '최종탈락' && isJobRejected(job))
+        || (selectedStatus === '진행포기' && job.finalStatus === '진행포기')
       const matchesPrepared = selectedPrepared === '전체'
         || (selectedPrepared === '작성완료' && job.documentPrepared)
         || (selectedPrepared === '미작성' && !job.documentPrepared)
@@ -893,16 +899,15 @@ function matchesSummaryQuickFilter(job) {
   if (activeSummaryFilter === 'document-waiting') return isDocumentResultWaiting(job)
   if (activeSummaryFilter === 'document-passed') return job.docStatus === '합격'
   if (activeSummaryFilter === 'ongoing') {
-    return !isJobRejected(job)
-      && job.finalStatus !== '최종합격'
+    return !isFinishedJob(job)
       && isOngoingProcess(job)
   }
   return true
 }
 
 function compareJobsByDeadline(firstJob, secondJob) {
-  const firstFinished = isJobRejected(firstJob) || firstJob.finalStatus === '최종합격'
-  const secondFinished = isJobRejected(secondJob) || secondJob.finalStatus === '최종합격'
+  const firstFinished = isFinishedJob(firstJob)
+  const secondFinished = isFinishedJob(secondJob)
   if (firstFinished !== secondFinished) return firstFinished ? 1 : -1
 
   const firstPending = hasPendingWork(firstJob)
@@ -982,7 +987,7 @@ function isOngoingProcess(job) {
 
 // 탈락이나 최종합격으로 끝난 공고인지. 정렬, 종료 공고 접기, 일정 수집이 같은 기준을 쓴다.
 function isFinishedJob(job) {
-  return isJobRejected(job) || job.finalStatus === '최종합격'
+  return isJobRejected(job) || ['최종합격', '진행포기'].includes(job.finalStatus)
 }
 
 // 이 공고에서 아직 챙겨야 할 일정. 이미 끝낸 일과 지나간 마감은 넣지 않는다.
@@ -1175,8 +1180,7 @@ function createTableRow(job) {
 function isDocumentResultWaiting(job) {
   return job.documentPrepared
     && job.docStatus === '대기'
-    && !isJobRejected(job)
-    && job.finalStatus !== '최종합격'
+    && !isFinishedJob(job)
 }
 
 function createDeadlineCell(job) {
@@ -1414,6 +1418,11 @@ function createProcessCell(job) {
   const pendingResultConfig = getPendingResultConfig(job)
   const quickResultSelect = createQuickResultSelect(job, pendingResultConfig)
   if (quickResultSelect) currentHeader.appendChild(quickResultSelect)
+  if (!isFinishedJob(job)) {
+    currentHeader.appendChild(createButton('진행 포기', 'withdraw-btn', (event) => {
+      void updateJobResult(job, WITHDRAW_CONFIG, '진행포기', event.currentTarget)
+    }))
+  }
 
   const timeline = document.createElement('div')
   timeline.className = 'stage-timeline'
@@ -1543,6 +1552,8 @@ function createQuickResultSelect(job, resultConfig = getPendingResultConfig(job)
   return select
 }
 
+const WITHDRAW_CONFIG = { label: '진행 상태', column: 'final_status', localKey: 'finalStatus' }
+
 const RESULT_CONFIGS = {
   document: {
     label: '서류',
@@ -1591,7 +1602,7 @@ const RESULT_CONFIGS = {
 // 전형 순서(서류 → 인적성 → 1차 → 2차 → 최종)를 그대로 따라가며,
 // 명시적으로 '대기'인 단계를 먼저 찾고 없으면 아직 정하지 않은 '미대상' 단계를 제안한다.
 function getPendingResultConfig(job) {
-  if (isJobRejected(job) || job.finalStatus === '최종합격') return null
+  if (isFinishedJob(job)) return null
 
   if (job.docStatus === '대기') {
     return job.documentPrepared ? RESULT_CONFIGS.document : null
@@ -1633,6 +1644,10 @@ function openQuickResultPicker(select) {
 async function updateJobResult(job, resultConfig, selectedValue, select) {
   if (!currentUser) return
 
+  if (selectedValue === '진행포기') {
+    if (!window.confirm(`${job.company}의 진행을 포기하시겠습니까? 기존 전형 기록은 보존되며 수정 화면에서 진행 중으로 되돌릴 수 있습니다.`)) return
+  }
+
   if (selectedValue === resultConfig.failedValue) {
     const confirmed = window.confirm(`${job.company}의 ${resultConfig.label} 결과를 탈락으로 저장하시겠습니까?`)
     if (!confirmed) {
@@ -1671,7 +1686,9 @@ async function updateJobResult(job, resultConfig, selectedValue, select) {
   if (error) {
     select.value = ''
     select.disabled = false
-    showAppMessage(`${resultConfig.label} 결과를 저장하지 못했습니다. 인터넷 연결과 DB 설정을 확인해 주세요.`, true)
+    showAppMessage(isSchemaOutdated(error.message)
+      ? '최신 DB 업데이트가 필요합니다. Supabase SQL Editor에서 supabase-schema.sql 전체를 실행해 주세요.'
+      : `${resultConfig.label} 결과를 저장하지 못했습니다. 인터넷 연결과 DB 설정을 확인해 주세요.`, true)
     return
   }
 
@@ -1683,6 +1700,7 @@ async function updateJobResult(job, resultConfig, selectedValue, select) {
 }
 
 function getCurrentStage(job) {
+  if (job.finalStatus === '진행포기') return { label: '진행 포기 · 전형 종료', className: 'is-draft' }
   if (job.docStatus === '탈락') return { label: '서류 탈락 · 전형 종료', className: 'is-failure' }
   if (job.assessmentResult === '탈락') {
     return { label: `${assessmentLabel(job)} 탈락 · 전형 종료`, className: 'is-failure' }
@@ -1766,6 +1784,7 @@ function normalizeInterviewStatus(status) {
 }
 
 function normalizeFinalStatus(job) {
+  if (job.finalStatus === '진행포기') return '진행 포기'
   if (job.finalStatus === '최종합격') return '합격'
   if (job.finalStatus === '최종탈락') return '탈락'
   return job.interview2Result === '합격' ? '대기' : '—'
@@ -2279,7 +2298,7 @@ function cleanText(value, maxLength) {
 // 이게 빠지면 SQL 보다 웹 코드를 먼저 올린 사용자가 '인터넷 연결을 확인하라'는 엉뚱한 안내를 받는다.
 function isSchemaOutdated(message) {
   const text = String(message || '')
-  return /assessment_[a-z]+|apply_period/.test(text) || /does not exist/i.test(text)
+  return /assessment_[a-z]+|apply_period|jobs_final_status/.test(text) || /does not exist/i.test(text)
 }
 
 function allowedValue(value, allowed, fallback) {

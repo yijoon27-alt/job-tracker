@@ -19,6 +19,7 @@ create table if not exists public.jobs (
   role text not null check (char_length(role) between 1 and 200),
   deadline date not null,
   deadline_time time,
+  apply_period text not null default '',
   link text not null default '' check (char_length(link) <= 2048 and (link = '' or link ~* '^https?://')),
   jd text not null default '' check (char_length(jd) <= 50000),
   preferred text not null default '' check (char_length(preferred) <= 50000),
@@ -35,12 +36,29 @@ create table if not exists public.jobs (
   interview1_result text not null default '미대상' check (interview1_result in ('미대상', '대기', '합격', '탈락')),
   interview2_date date,
   interview2_result text not null default '미대상' check (interview2_result in ('미대상', '대기', '합격', '탈락')),
-  final_status text not null default '진행중' check (final_status in ('진행중', '최종합격', '최종탈락')),
+  final_status text not null default '진행중' check (final_status in ('진행중', '최종합격', '최종탈락', '진행포기')),
   legacy_id text check (char_length(legacy_id) <= 200),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (user_id, legacy_id)
 );
+
+-- 기존 설치의 최종 상태 제약조건을 교체합니다. 전형 기록은 변경하지 않습니다.
+do $$
+declare
+  constraint_name text;
+begin
+  for constraint_name in
+    select conname from pg_constraint
+    where conrelid = 'public.jobs'::regclass and contype = 'c'
+      and pg_get_constraintdef(oid) like '%final_status%'
+  loop
+    execute format('alter table public.jobs drop constraint %I', constraint_name);
+  end loop;
+  alter table public.jobs add constraint jobs_final_status_allowed
+    check (final_status in ('진행중', '최종합격', '최종탈락', '진행포기'));
+end;
+$$;
 
 -- 기존 설치에는 서류 작성 여부 필드를 안전하게 추가합니다.
 -- 이미 자소서나 전형 결과가 있는 기록은 작성 완료로 한 번만 보정합니다.
@@ -192,6 +210,53 @@ begin
 end;
 $$;
 
+-- 반기별 통계용 지원 시기 필드입니다. 'YYYY-H1'(상반기) / 'YYYY-H2'(하반기) 형식이고 기본값은 '' 입니다.
+-- 화면에서는 서류 제출 마감일(deadline)의 월로 자동 분류한 값을 저장하며, 등록·수정 폼에서 직접 덮어쓸 수 있습니다.
+-- 이름에 'assessment_result' / 'assessment_type' 이 부분 문자열로 들어가지 않으므로
+-- 위쪽 do-block 들의 제약조건 교체 로직(pg_get_constraintdef ... like '%assessment_%')에 걸리지 않습니다.
+do $$
+begin
+  if not exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'jobs'
+      and column_name = 'apply_period'
+  ) then
+    alter table public.jobs
+      add column apply_period text not null default '';
+
+    -- 일회성 보정입니다. 이 컬럼이 생기기 전에 저장된 기록은 전부 26년 하반기 지원이므로
+    -- 마감일 기준 자동 분류를 쓰지 않고 '2026-H2' 로 일괄 지정합니다.
+    -- 컬럼이 이미 있으면 이 블록 전체를 건너뛰므로, 스크립트를 다시 실행해도
+    -- 마이그레이션 이후에 등록한 공고는 절대 재분류되지 않습니다.
+    update public.jobs
+    set apply_period = '2026-H2';
+  end if;
+end;
+$$;
+
+-- 형식 제약조건입니다. 연도를 열거하지 않는 정규식이라 2027년 이후에도 SQL 변경이 필요 없습니다.
+-- 위 블록보다 반드시 뒤에 와야 합니다. 순서가 바뀌면 기존 설치에서 아직 없는 컬럼에
+-- 제약조건을 걸려다 스크립트 전체가 중단됩니다.
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint con
+    join pg_class rel on rel.oid = con.conrelid
+    join pg_namespace nsp on nsp.oid = rel.relnamespace
+    where nsp.nspname = 'public'
+      and rel.relname = 'jobs'
+      and con.conname = 'jobs_apply_period_format'
+  ) then
+    alter table public.jobs
+      add constraint jobs_apply_period_format
+      check (apply_period = '' or apply_period ~ '^[0-9]{4}-H[12]$');
+  end if;
+end;
+$$;
+
 create index if not exists jobs_user_id_idx on public.jobs (user_id);
 
 create or replace function public.set_job_updated_at()
@@ -217,13 +282,13 @@ revoke all on table public.jobs from anon;
 revoke all on table public.jobs from authenticated;
 grant select, delete on table public.jobs to authenticated;
 grant insert (
-  user_id, company, role, deadline, deadline_time, link, jd, preferred, cover_letter, notes,
+  user_id, company, role, deadline, deadline_time, apply_period, link, jd, preferred, cover_letter, notes,
   document_prepared, assessment_deadline, assessment_time, assessment_done, assessment_type, assessment_result,
   doc_status, interview1_date, interview1_result, interview2_date,
   interview2_result, final_status
 ) on table public.jobs to authenticated;
 grant update (
-  company, role, deadline, deadline_time, link, jd, preferred, cover_letter, notes,
+  company, role, deadline, deadline_time, apply_period, link, jd, preferred, cover_letter, notes,
   document_prepared, assessment_deadline, assessment_time, assessment_done, assessment_type, assessment_result,
   doc_status, interview1_date, interview1_result, interview2_date,
   interview2_result, final_status
